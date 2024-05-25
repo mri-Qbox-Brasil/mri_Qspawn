@@ -1,16 +1,16 @@
-wx = {}
-wx.Debug = false -- Enables the /choose command that triggers the spawn selector export
+cfg = {}
+cfg.Debug = true -- Enables the /choose command that triggers the spawn selector export
 
-wx.Locations = {
-    ["Police Department"] = {
+cfg.Locations = {
+    ["Departamento de Polícia"] = {
         Spawn = vector4(428.8641, -981.2666, 30.7103, 95.1865),
         Icon = 'building-shield',
-        Description = "Main building of the local police department"
+        Description = "Edifício principal do departamento de polícia local"
     },
     ["Airport"] = {
         Spawn = vector4(-1041.5402, -2744.5745, 21.3594, 327.4831),
         Icon = 'plane-arrival',
-        Description = "Los Santos International Airport"
+        Description = "Aeroporto Internacional de Los Santos"
     },
     ["Hospital"] = {
         Spawn = vector4(373.5801, -597.6584, 28.8329, 238.7010),
@@ -20,11 +20,11 @@ wx.Locations = {
     ["Paleto Bay"] = {
         Spawn = vector4(145.5080, 6641.6006, 31.5540, 179.7455),
         Icon = 'mountain-city',
-        Description = "Paleto Bay is a small town located in Blaine County, San Andreas"
+        Description = "Paleto Bay é uma pequena cidade localizada no condado de Blaine, em San Andreas"
     },
 }
 
-wx.LastLocation = {
-    Title = "Last Location",
+cfg.LastLocation = {
+    Title = "Última localização",
     Icon = 'map-location-dot'
 }

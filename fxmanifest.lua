@@ -6,6 +6,7 @@ author 'wx / woox'
 description 'Simple OX based spawn selector'
 
 client_scripts {
+    '@qbx_core/modules/playerdata.lua',
     'client/*.lua'
 }
 
