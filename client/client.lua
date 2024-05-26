@@ -3,8 +3,11 @@ local opt = {
         title = cfg.LastLocation.Title,
         icon = cfg.LastLocation.Icon,
         onSelect = function ()
+            SetPlayerInvincible(cache.ped, true)
             SetEntityCoords(cache.ped, QBX.PlayerData.position.x, QBX.PlayerData.position.y, QBX.PlayerData.position.z)
             SetEntityHeading(cache.ped, QBX.PlayerData.position.a)
+            while not HasCollisionLoadedAroundEntity(cache.ped) do Wait(0) end
+            SetEntityCoords(cache.ped, QBX.PlayerData.position.x, QBX.PlayerData.position.y, QBX.PlayerData.position.z)
             SwitchInPlayer(cache.ped)
             while IsPlayerSwitchInProgress() do Wait(0) end
             lib.showContext('spawnplayer')
@@ -31,7 +34,12 @@ for k,v in pairs(cfg.Locations) do
             description = v.Description,
             disabled = not CanChooseSpawn(v.Spawn),
             onSelect = function ()
+                SetPlayerInvincible(cache.ped, true)
                 SetEntityCoords(cache.ped, v.Spawn)
+
+                while not HasCollisionLoadedAroundEntity(cache.ped) do Wait(0) end
+                SetEntityCoords(cache.ped, v.Spawn)
+
                 SwitchToMultiSecondpart(cache.ped)
                 while IsPlayerSwitchInProgress() do Wait(0) end
                 lib.showContext('spawnplayer')
@@ -62,6 +70,7 @@ lib.registerContext({
                 TriggerEvent('QBCore:Client:OnPlayerLoaded')
                 TriggerServerEvent('qb-houses:server:SetInsideMeta', 0, false)
                 TriggerServerEvent('qb-apartments:server:SetInsideMeta', 0, 0, false)
+                SetPlayerInvincible(cache.ped, false)
             end
         }
     },
