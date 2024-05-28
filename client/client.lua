@@ -1,24 +1,41 @@
-local opt = {
-    {
-        title = cfg.LastLocation.Title,
-        icon = cfg.LastLocation.Icon,
-        onSelect = function ()
-            SetPlayerInvincible(cache.ped, true)
-            SetEntityCoords(cache.ped, QBX.PlayerData.position.x, QBX.PlayerData.position.y, QBX.PlayerData.position.z)
-            SetEntityHeading(cache.ped, QBX.PlayerData.position.a)
-            while not HasCollisionLoadedAroundEntity(cache.ped) do Wait(0) end
-            SetEntityCoords(cache.ped, QBX.PlayerData.position.x, QBX.PlayerData.position.y, QBX.PlayerData.position.z)
-            SwitchInPlayer(cache.ped)
-            while IsPlayerSwitchInProgress() do Wait(0) end
-            lib.showContext('spawnplayer')
-        end
-    }
-}
+local function LoadingSpinner(textToDisplay)
+    AddTextEntry("CUSTOMLOADSTR", textToDisplay)
+    BeginTextCommandBusyspinnerOn("CUSTOMLOADSTR")
+    EndTextCommandBusyspinnerOn(4)
+end
 
-function CanChooseSpawn(pos)
+local function PointSelect(pos)
+    LoadingSpinner("Carregando...")
+
+        SetPlayerInvincible(cache.ped, true)
+        SetEntityCoords(cache.ped, pos.x, pos.y, pos.z)
+        SetEntityHeading(cache.ped, pos.a)
+        while not HasCollisionLoadedAroundEntity(cache.ped) do
+            Wait(0)
+        end
+
+        SwitchInPlayer(cache.ped)
+        while IsPlayerSwitchInProgress() do
+            Wait(0)
+        end
+
+        BusyspinnerOff()
+
+        lib.showContext('spawnplayer')
+end
+
+local opt = {{
+    title = cfg.LastLocation.Title,
+    icon = cfg.LastLocation.Icon,
+    onSelect = function()
+        PointSelect(QBX.PlayerData.position)
+    end
+}}
+
+local function CanChooseSpawn(pos)
     local badlocations = {
-        [vector3(0,0,0)] = true,
-        [vector4(0,0,0,0)] = true,
+        [vector3(0, 0, 0)] = true,
+        [vector4(0, 0, 0, 0)] = true
     }
     if badlocations[pos] then
         return false
@@ -26,26 +43,16 @@ function CanChooseSpawn(pos)
     return true
 end
 
-for k,v in pairs(cfg.Locations) do
-    table.insert(opt,
-        {
-            title = k,
-            icon = v.Icon,
-            description = v.Description,
-            disabled = not CanChooseSpawn(v.Spawn),
-            onSelect = function ()
-                SetPlayerInvincible(cache.ped, true)
-                SetEntityCoords(cache.ped, v.Spawn)
-
-                while not HasCollisionLoadedAroundEntity(cache.ped) do Wait(0) end
-                SetEntityCoords(cache.ped, v.Spawn)
-
-                SwitchToMultiSecondpart(cache.ped)
-                while IsPlayerSwitchInProgress() do Wait(0) end
-                lib.showContext('spawnplayer')
-            end
-        }
-    )
+for k, v in pairs(cfg.Locations) do
+    table.insert(opt, {
+        title = k,
+        icon = v.Icon,
+        description = v.Description,
+        disabled = not CanChooseSpawn(v.Spawn),
+        onSelect = function()
+            PointSelect(v.Spawn)
+        end
+    })
 end
 
 lib.registerContext({
@@ -60,32 +67,30 @@ lib.registerContext({
     title = 'Escolha uma localização',
     canClose = false,
     menu = 'spawnselector',
-    options = {
-        {
-            title = 'Escolher aqui',
-            icon = 'fa-solid fa-location-dot',
-            onSelect = function ()
-                -- eventos após logar servidor
-                TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
-                TriggerEvent('QBCore:Client:OnPlayerLoaded')
-                TriggerServerEvent('qb-houses:server:SetInsideMeta', 0, false)
-                TriggerServerEvent('qb-apartments:server:SetInsideMeta', 0, 0, false)
-                SetPlayerInvincible(cache.ped, false)
-            end
-        }
-    },
-    onBack = function ()
+    options = {{
+        title = 'Escolher aqui',
+        icon = 'fa-solid fa-location-dot',
+        onSelect = function()
+            -- eventos após logar servidor
+            TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
+            TriggerEvent('QBCore:Client:OnPlayerLoaded')
+            TriggerServerEvent('qb-houses:server:SetInsideMeta', 0, false)
+            TriggerServerEvent('qb-apartments:server:SetInsideMeta', 0, 0, false)
+            SetPlayerInvincible(cache.ped, false)
+        end
+    }},
+    onBack = function()
         SwitchToMultiFirstpart(cache.ped, 0, 2)
     end
 })
 
-exports('chooseSpawn',function ()
+exports('chooseSpawn', function()
     SwitchToMultiFirstpart(cache.ped, 0, 2)
     lib.showContext('spawnselector')
 end)
 
 if cfg.Debug then
-    RegisterCommand('choose',function ()
+    RegisterCommand('choose', function()
         exports[GetCurrentResourceName()]:chooseSpawn()
-    end,false)
+    end, false)
 end
