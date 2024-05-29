@@ -1,5 +1,6 @@
 cfg = {}
 cfg.Debug = true -- Enables the /choose command that triggers the spawn selector export
+cfg.Timeout = 15000
 
 cfg.Locations = {
     ["Departamento de Polícia"] = {

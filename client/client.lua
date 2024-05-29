@@ -7,21 +7,28 @@ end
 local function PointSelect(pos)
     LoadingSpinner("Carregando...")
 
-        SetPlayerInvincible(cache.ped, true)
-        SetEntityCoords(cache.ped, pos.x, pos.y, pos.z)
-        SetEntityHeading(cache.ped, pos.a)
-        while not HasCollisionLoadedAroundEntity(cache.ped) do
-            Wait(0)
-        end
+    RequestCollisionAtCoord(pos.x, pos.y, pos.z)
+    SetPlayerInvincible(cache.ped, true)
+    SetEntityCoordsNoOffset(cache.ped, pos.x, pos.y, pos.z, false, false, false, true)
 
-        SwitchInPlayer(cache.ped)
-        while IsPlayerSwitchInProgress() do
-            Wait(0)
-        end
+    SetEntityHeading(cache.ped, pos.a)
+    ClearPedTasksImmediately(cache.ped)
+    ClearPlayerWantedLevel(PlayerId())
 
-        BusyspinnerOff()
+    local time = GetGameTimer()
+    while (not HasCollisionLoadedAroundEntity(cache.ped) and (GetGameTimer() - time) < cfg.Timeout) do
+        Wait(100)
+    end
 
-        lib.showContext('spawnplayer')
+    SwitchInPlayer(cache.ped)
+    time = GetGameTimer()
+    while (IsPlayerSwitchInProgress() and (GetGameTimer() - time) < cfg.Timeout) do
+        Wait(100)
+    end
+
+    BusyspinnerOff()
+
+    lib.showContext('spawnplayer')
 end
 
 local opt = {{
