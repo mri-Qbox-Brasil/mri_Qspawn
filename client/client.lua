@@ -87,12 +87,12 @@ lib.registerContext({
         end
     }},
     onBack = function()
-        SwitchToMultiFirstpart(cache.ped, 0, 2)
+        SwitchToMultiFirstpart(cache.ped, 0, 1)
     end
 })
 
 exports('chooseSpawn', function()
-    SwitchToMultiFirstpart(cache.ped, 0, 2)
+    SwitchToMultiFirstpart(cache.ped, 0, 1)
     lib.showContext('spawnselector')
 end)
 
