@@ -10,7 +10,7 @@ local function PointSelect(pos)
     RequestCollisionAtCoord(pos.x, pos.y, pos.z)
     SetPlayerInvincible(cache.ped, true)
     SetEntityCoordsNoOffset(cache.ped, pos.x, pos.y, pos.z, false, false, false, true)
-
+    FreezeEntityPosition(cache.ped, true)
     SetEntityHeading(cache.ped, pos.a)
     ClearPedTasksImmediately(cache.ped)
     ClearPlayerWantedLevel(PlayerId())
@@ -84,6 +84,7 @@ lib.registerContext({
             TriggerServerEvent('qb-houses:server:SetInsideMeta', 0, false)
             TriggerServerEvent('qb-apartments:server:SetInsideMeta', 0, 0, false)
             SetPlayerInvincible(cache.ped, false)
+            FreezeEntityPosition(cache.ped, false)
         end
     }},
     onBack = function()
