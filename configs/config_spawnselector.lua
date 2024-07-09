@@ -2,6 +2,7 @@ cfg = {}
 cfg.Debug = true -- Enables the /choose command that triggers the spawn selector export
 cfg.Timeout = 1000
 
+cfg.AlwaysChooseSpawn = false -- Let the player always choose where to spawn
 cfg.Locations = {
     ["Departamento de Polícia"] = {
         Spawn = vector4(428.8641, -981.2666, 30.7103, 95.1865),
@@ -24,7 +25,7 @@ cfg.Locations = {
         Description = "Paleto Bay é uma pequena cidade localizada no condado de Blaine, em San Andreas"
     },
 }
-
+cfg.MenuTitle = 'Escolha um local'
 cfg.LastLocation = {
     Title = "Última localização",
     Icon = 'map-location-dot'
