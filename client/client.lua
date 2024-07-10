@@ -19,7 +19,7 @@ local function PointSelect(args)
 
     RequestCollisionAtCoord(pos.x, pos.y, pos.z)
     SetPlayerInvincible(cache.ped, true)
-    SetEntityCoordsNoOffset(cache.ped, pos.x, pos.y, pos.z, false, false, false, true)
+    SetEntityCoordsNoOffset(cache.ped, pos.x, pos.y, pos.z, false, false, false)
     FreezeEntityPosition(cache.ped, true)
     SetEntityHeading(cache.ped, pos.a)
     ClearPedTasksImmediately(cache.ped)
@@ -107,6 +107,9 @@ exports('chooseSpawn', function()
     if cfg.Locations and #cfg.Locations > 0 and cfg.AlwaysChooseSpawn then
         lib.showContext('spawnselector')
     else
+        if not CanChooseSpawn(QBX.PlayerData.position) then
+            PointSelect({ pos = cfg.DefaultLocation })
+        end
         DoSpawn()
     end
 end)
