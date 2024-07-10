@@ -3,6 +3,7 @@ cfg.Debug = true -- Enables the /choose command that triggers the spawn selector
 cfg.Timeout = 1000
 
 cfg.AlwaysChooseSpawn = false -- Let the player always choose where to spawn
+cfg.DefaultLocation = vec3(0, 0, 0) -- If there is nowhere to go...
 cfg.Locations = {
     ["Departamento de Polícia"] = {
         Spawn = vector4(428.8641, -981.2666, 30.7103, 95.1865),
