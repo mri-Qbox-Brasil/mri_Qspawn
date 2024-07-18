@@ -21,6 +21,8 @@ local function PointSelect(pos)
     end
 
     SwitchInPlayer(cache.ped)
+
+
     time = GetGameTimer()
     while (IsPlayerSwitchInProgress() and (GetGameTimer() - time) < cfg.Timeout) do
         Wait(100)
@@ -93,6 +95,7 @@ lib.registerContext({
 })
 
 exports('chooseSpawn', function()
+    Wait(500)
     SwitchToMultiFirstpart(cache.ped, 0, 1)
     lib.showContext('spawnselector')
 end)
