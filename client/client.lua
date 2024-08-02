@@ -94,11 +94,20 @@ lib.registerContext({
     end
 })
 
-exports('chooseSpawn', function()
+local function ChooseSpawn()
     Wait(500)
     SwitchToMultiFirstpart(cache.ped, 0, 1)
+    if IsScreenFadedOut() then
+        DoScreenFadeIn(500)
+    end
     lib.showContext('spawnselector')
+end
+
+RegisterNetEvent('qb-spawn:client:openUI', function()
+    ChooseSpawn()
 end)
+
+exports('chooseSpawn', ChooseSpawn)
 
 if cfg.Debug then
     RegisterCommand('choose', function()
