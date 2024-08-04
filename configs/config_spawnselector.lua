@@ -3,7 +3,8 @@ cfg.Debug = true -- Enables the /choose command that triggers the spawn selector
 cfg.Timeout = 1000
 
 cfg.AlwaysChooseSpawn = false -- Let the player always choose where to spawn
-cfg.DefaultLocation = vec3(0, 0, 0) -- If there is nowhere to go...
+cfg.ConfirmSpawn = true -- Let the player confirm the spawn location
+cfg.DefaultLocation = vector4(-1041.54, -2744.57, 21.35, 327.48) -- If there is nowhere to go...
 cfg.Locations = {
     ["Departamento de Polícia"] = {
         Spawn = vector4(428.8641, -981.2666, 30.7103, 95.1865),
@@ -18,7 +19,7 @@ cfg.Locations = {
     ["Hospital"] = {
         Spawn = vector4(373.5801, -597.6584, 28.8329, 238.7010),
         Icon = 'hospital',
-        Description = ""
+        Description = "Tenho a impressão que já estive aqui!?"
     },
     ["Paleto Bay"] = {
         Spawn = vector4(145.5080, 6641.6006, 31.5540, 179.7455),
@@ -29,5 +30,6 @@ cfg.Locations = {
 cfg.MenuTitle = 'Escolha um local'
 cfg.LastLocation = {
     Title = "Última localização",
-    Icon = 'map-location-dot'
+    Icon = 'map-location-dot',
+    Description = "Local onde você estava"
 }

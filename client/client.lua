@@ -1,4 +1,9 @@
+local hasLocsToChoose = false
+
 local function DoSpawn()
+    if IsPlayerSwitchInProgress() then
+        SwitchInPlayer(cache.ped)
+    end
     TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
     TriggerEvent('QBCore:Client:OnPlayerLoaded')
     TriggerServerEvent('qb-houses:server:SetInsideMeta', 0, false)
@@ -39,7 +44,11 @@ local function PointSelect(args)
     end
 
     BusyspinnerOff()
-    lib.showContext('spawnplayer')
+    if cfg.ConfirmSpawn then
+        lib.showContext('spawnplayer')
+    else
+        DoSpawn()
+    end
 end
 
 local function CanChooseSpawn(pos)
@@ -60,19 +69,18 @@ local opt = {{
 }}
 
 local function Init()
-    if cfg.Locations and #cfg.Locations > 0 then
-        for k, v in pairs(cfg.Locations) do
-            table.insert(opt, {
-                title = k,
-                icon = v.Icon,
-                description = v.Description,
-                disabled = not CanChooseSpawn(v.Spawn),
-                onSelect = PointSelect,
-                args = {
-                    pos = v.Spawn
-                }
-            })
-        end
+    for k, v in pairs(cfg.Locations) do
+        table.insert(opt, {
+            title = k,
+            icon = v.Icon,
+            description = v.Description,
+            disabled = not CanChooseSpawn(v.Spawn),
+            onSelect = PointSelect,
+            args = {
+                pos = v.Spawn
+            }
+        })
+        hasLocsToChoose = hasLocsToChoose or CanChooseSpawn(v.Spawn)
     end
 
     lib.registerContext({
@@ -99,18 +107,18 @@ local function Init()
 
     if cfg.Debug then
         RegisterCommand('choose', function()
-            exports[GetCurrentResourceName()]:chooseSpawn()
+            exports[GetCurrentResourceName()]:chooseSpawn(true)
         end, false)
     end
 end
 
-local function ChooseSpawn()
+local function ChooseSpawn(letChoose)
     Wait(500)
     SwitchToMultiFirstpart(cache.ped, 0, 1)
     if IsScreenFadedOut() then
         DoScreenFadeIn(500)
     end
-    if cfg.Locations and #cfg.Locations > 0 and cfg.AlwaysChooseSpawn then
+    if hasLocsToChoose and (cfg.AlwaysChooseSpawn or letChoose or not CanChooseSpawn(QBX.PlayerData.position)) then
         lib.showContext('spawnselector')
     else
         if not CanChooseSpawn(QBX.PlayerData.position) then
@@ -125,11 +133,5 @@ RegisterNetEvent('qb-spawn:client:openUI', function()
 end)
 
 exports('chooseSpawn', ChooseSpawn)
-
-if cfg.Debug then
-    RegisterCommand('choose', function()
-        exports[GetCurrentResourceName()]:chooseSpawn()
-    end, false)
-end
 
 Init()
