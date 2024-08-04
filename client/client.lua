@@ -4,6 +4,7 @@ local function DoSpawn()
     if IsPlayerSwitchInProgress() then
         SwitchInPlayer(cache.ped)
     end
+
     TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
     TriggerEvent('QBCore:Client:OnPlayerLoaded')
     TriggerServerEvent('qb-houses:server:SetInsideMeta', 0, false)
@@ -69,18 +70,20 @@ local opt = {{
 }}
 
 local function Init()
-    for k, v in pairs(cfg.Locations) do
-        table.insert(opt, {
-            title = k,
-            icon = v.Icon,
-            description = v.Description,
-            disabled = not CanChooseSpawn(v.Spawn),
-            onSelect = PointSelect,
-            args = {
-                pos = v.Spawn
-            }
-        })
-        hasLocsToChoose = hasLocsToChoose or CanChooseSpawn(v.Spawn)
+    if cfg.Locations then
+        for k, v in pairs(cfg.Locations) do
+            table.insert(opt, {
+                title = k,
+                icon = v.Icon,
+                description = v.Description,
+                disabled = not CanChooseSpawn(v.Spawn),
+                onSelect = PointSelect,
+                args = {
+                    pos = v.Spawn
+                }
+            })
+            hasLocsToChoose = hasLocsToChoose or CanChooseSpawn(v.Spawn)
+        end
     end
 
     lib.registerContext({
