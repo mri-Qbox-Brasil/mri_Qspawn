@@ -1,6 +1,6 @@
 local hasLocsToChoose = false
-
 local function DoSpawn()
+    TriggerServerEvent('mri_Qspawn:server:firstSpawn')
     if IsPlayerSwitchInProgress() then
         SwitchInPlayer(cache.ped)
     end
@@ -38,17 +38,16 @@ local function PointSelect(args)
 
     SwitchInPlayer(cache.ped)
 
-
     time = GetGameTimer()
     while (IsPlayerSwitchInProgress() and (GetGameTimer() - time) < cfg.Timeout) do
         Wait(100)
     end
 
     BusyspinnerOff()
-    if cfg.ConfirmSpawn then
-        lib.showContext('spawnplayer')
-    else
+    if not cfg.ConfirmSpawn or args.skipConfirmation then
         DoSpawn()
+    else
+        lib.showContext('spawnplayer')
     end
 end
 
@@ -117,17 +116,21 @@ end
 
 local function ChooseSpawn(letChoose)
     Wait(500)
-    SwitchToMultiFirstpart(cache.ped, 0, 1)
     if IsScreenFadedOut() then
         DoScreenFadeIn(500)
     end
-    if hasLocsToChoose and (cfg.AlwaysChooseSpawn or letChoose or not CanChooseSpawn(QBX.PlayerData.position)) then
+    if  (cfg.AlwaysChooseSpawn or letChoose or not CanChooseSpawn(QBX.PlayerData.position)) or (not GlobalState['firstLogin'][QBX.PlayerData.citizenid] and hasLocsToChoose) then
+        SwitchToMultiFirstpart(cache.ped, 0, 1)
         lib.showContext('spawnselector')
     else
         if not CanChooseSpawn(QBX.PlayerData.position) then
             PointSelect({ pos = cfg.DefaultLocation })
+        else
+            PointSelect({
+                pos = QBX.PlayerData.position,
+                skipConfirmation = true
+            })
         end
-        DoSpawn()
     end
 end
 

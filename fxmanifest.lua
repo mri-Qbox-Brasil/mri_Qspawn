@@ -5,9 +5,16 @@ lua54 'yes'
 author 'wx / woox'
 description 'Simple OX based spawn selector'
 
-client_scripts {
+shared_scripts {
+    '@ox_lib/init.lua',
     '@qbx_core/modules/playerdata.lua',
+    'configs/*.lua'
+}
+
+client_scripts {
     'client/*.lua'
 }
 
-shared_scripts {'@ox_lib/init.lua','configs/*.lua'}
+server_scripts {
+    'server/*.lua'
+}
