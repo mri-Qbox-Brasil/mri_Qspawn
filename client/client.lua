@@ -1,15 +1,31 @@
+local hasLocsToChoose = false
+
+local function DoSpawn()
+    if IsPlayerSwitchInProgress() then
+        SwitchInPlayer(cache.ped)
+    end
+
+    TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
+    TriggerEvent('QBCore:Client:OnPlayerLoaded')
+    TriggerServerEvent('qb-houses:server:SetInsideMeta', 0, false)
+    TriggerServerEvent('qb-apartments:server:SetInsideMeta', 0, 0, false)
+    SetPlayerInvincible(cache.ped, false)
+    FreezeEntityPosition(cache.ped, false)
+end
+
 local function LoadingSpinner(textToDisplay)
     AddTextEntry("CUSTOMLOADSTR", textToDisplay)
     BeginTextCommandBusyspinnerOn("CUSTOMLOADSTR")
     EndTextCommandBusyspinnerOn(4)
 end
 
-local function PointSelect(pos)
+local function PointSelect(args)
+    local pos = args.pos
     LoadingSpinner("Carregando...")
 
     RequestCollisionAtCoord(pos.x, pos.y, pos.z)
     SetPlayerInvincible(cache.ped, true)
-    SetEntityCoordsNoOffset(cache.ped, pos.x, pos.y, pos.z, false, false, false, true)
+    SetEntityCoordsNoOffset(cache.ped, pos.x, pos.y, pos.z, false, false, false)
     FreezeEntityPosition(cache.ped, true)
     SetEntityHeading(cache.ped, pos.a)
     ClearPedTasksImmediately(cache.ped)
@@ -29,78 +45,90 @@ local function PointSelect(pos)
     end
 
     BusyspinnerOff()
-
-    lib.showContext('spawnplayer')
-end
-
-local opt = {{
-    title = cfg.LastLocation.Title,
-    icon = cfg.LastLocation.Icon,
-    onSelect = function()
-        PointSelect(QBX.PlayerData.position)
+    if cfg.ConfirmSpawn then
+        lib.showContext('spawnplayer')
+    else
+        DoSpawn()
     end
-}}
+end
 
 local function CanChooseSpawn(pos)
     local badlocations = {
         [vector3(0, 0, 0)] = true,
         [vector4(0, 0, 0, 0)] = true
     }
-    if badlocations[pos] then
-        return false
-    end
-    return true
+    return not badlocations[pos]
 end
 
-for k, v in pairs(cfg.Locations) do
-    table.insert(opt, {
-        title = k,
-        icon = v.Icon,
-        description = v.Description,
-        disabled = not CanChooseSpawn(v.Spawn),
-        onSelect = function()
-            PointSelect(v.Spawn)
+local opt = {{
+    title = cfg.LastLocation.Title,
+    icon = cfg.LastLocation.Icon,
+    onSelect = PointSelect,
+    args = {
+        pos = QBX.PlayerData.position
+    }
+}}
+
+local function Init()
+    if cfg.Locations then
+        for k, v in pairs(cfg.Locations) do
+            table.insert(opt, {
+                title = k,
+                icon = v.Icon,
+                description = v.Description,
+                disabled = not CanChooseSpawn(v.Spawn),
+                onSelect = PointSelect,
+                args = {
+                    pos = v.Spawn
+                }
+            })
+            hasLocsToChoose = hasLocsToChoose or CanChooseSpawn(v.Spawn)
+        end
+    end
+
+    lib.registerContext({
+        id = 'spawnselector',
+        title = cfg.MenuTitle,
+        canClose = false,
+        options = opt
+    })
+
+    lib.registerContext({
+        id = 'spawnplayer',
+        title = cfg.MenuTitle,
+        canClose = false,
+        menu = 'spawnselector',
+        options = {{
+            title = 'Escolher aqui',
+            icon = 'fa-solid fa-location-dot',
+            onSelect = DoSpawn
+        }},
+        onBack = function()
+            SwitchToMultiFirstpart(cache.ped, 0, 1)
         end
     })
+
+    if cfg.Debug then
+        RegisterCommand('choose', function()
+            exports[GetCurrentResourceName()]:chooseSpawn(true)
+        end, false)
+    end
 end
 
-lib.registerContext({
-    id = 'spawnselector',
-    title = 'Escolha uma localização',
-    canClose = false,
-    options = opt
-})
-
-lib.registerContext({
-    id = 'spawnplayer',
-    title = 'Escolha uma localização',
-    canClose = false,
-    menu = 'spawnselector',
-    options = {{
-        title = 'Escolher aqui',
-        icon = 'fa-solid fa-location-dot',
-        onSelect = function()
-            -- eventos após logar servidor
-            TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
-            TriggerEvent('QBCore:Client:OnPlayerLoaded')
-            TriggerServerEvent('qb-houses:server:SetInsideMeta', 0, false)
-            TriggerServerEvent('qb-apartments:server:SetInsideMeta', 0, 0, false)
-            SetPlayerInvincible(cache.ped, false)
-            FreezeEntityPosition(cache.ped, false)
-        end
-    }},
-    onBack = function()
-        SwitchToMultiFirstpart(cache.ped, 0, 1)
-    end
-})
-
-local function ChooseSpawn()
+local function ChooseSpawn(letChoose)
     Wait(500)
     SwitchToMultiFirstpart(cache.ped, 0, 1)
     if IsScreenFadedOut() then
         DoScreenFadeIn(500)
     end
-    lib.showContext('spawnselector')
+    if hasLocsToChoose and (cfg.AlwaysChooseSpawn or letChoose or not CanChooseSpawn(QBX.PlayerData.position)) then
+        lib.showContext('spawnselector')
+    else
+        if not CanChooseSpawn(QBX.PlayerData.position) then
+            PointSelect({ pos = cfg.DefaultLocation })
+        end
+        DoSpawn()
+    end
 end
 
 RegisterNetEvent('qb-spawn:client:openUI', function()
@@ -109,8 +137,4 @@ end)
 
 exports('chooseSpawn', ChooseSpawn)
 
-if cfg.Debug then
-    RegisterCommand('choose', function()
-        exports[GetCurrentResourceName()]:chooseSpawn()
-    end, false)
-end
+Init()
