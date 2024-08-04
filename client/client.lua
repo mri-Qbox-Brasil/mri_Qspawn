@@ -119,7 +119,7 @@ local function ChooseSpawn(letChoose)
     if IsScreenFadedOut() then
         DoScreenFadeIn(500)
     end
-    if  (cfg.AlwaysChooseSpawn or letChoose or not CanChooseSpawn(QBX.PlayerData.position)) or (not GlobalState['firstLogin'][QBX.PlayerData.citizenid] and hasLocsToChoose) then
+    if  (cfg.AlwaysChooseSpawn or letChoose or not CanChooseSpawn(QBX.PlayerData.position)) or (not GlobalState['firstLogin'][tostring(QBX.PlayerData.citizenid)] and hasLocsToChoose) then
         SwitchToMultiFirstpart(cache.ped, 0, 1)
         lib.showContext('spawnselector')
     else
