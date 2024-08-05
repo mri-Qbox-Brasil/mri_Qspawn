@@ -1,10 +1,10 @@
 cfg = {}
-cfg.Debug = true -- Enables the /choose command that triggers the spawn selector export
+cfg.Debug = true -- Ativa o comando /escolha que aciona a exportação de seletor de spawn
 cfg.Timeout = 1000
 
-cfg.AlwaysChooseSpawn = false -- Let the player always choose where to spawn
-cfg.ConfirmSpawn = true -- Let the player confirm the spawn location
-cfg.DefaultLocation = vector4(-1041.54, -2744.57, 21.35, 327.48) -- If there is nowhere to go...
+cfg.AlwaysChooseSpawn = false -- Deixe o jogador sempre escolher onde aparecer
+cfg.ConfirmSpawn = true -- Deixe o jogador confirmar a localização da Spawn
+cfg.DefaultLocation = vector4(-1041.54, -2744.57, 21.35, 327.48) -- Se não há para onde ir ...
 cfg.Locations = {
     ["Departamento de Polícia"] = {
         Spawn = vector4(428.8641, -981.2666, 30.7103, 95.1865),
