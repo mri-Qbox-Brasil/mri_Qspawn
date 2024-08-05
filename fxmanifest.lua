@@ -7,11 +7,11 @@ description 'Simple OX based spawn selector'
 
 shared_scripts {
     '@ox_lib/init.lua',
-    '@qbx_core/modules/playerdata.lua',
     'configs/*.lua'
 }
 
 client_scripts {
+    '@qbx_core/modules/playerdata.lua',
     'client/*.lua'
 }
 
