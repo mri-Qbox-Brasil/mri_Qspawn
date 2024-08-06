@@ -59,16 +59,18 @@ local function CanChooseSpawn(pos)
     return not badlocations[pos]
 end
 
-local opt = {{
-    title = cfg.LastLocation.Title,
-    icon = cfg.LastLocation.Icon,
-    onSelect = PointSelect,
-    args = {
-        pos = QBX.PlayerData.position
-    }
-}}
-
 local function Init()
+    print(json.encode(QBX.PlayerData))
+    local opt = {{
+        title = cfg.LastLocation.Title,
+        icon = cfg.LastLocation.Icon,
+        onSelect = PointSelect,
+        disabled = not CanChooseSpawn(QBX.PlayerData.position),
+        args = {
+            pos = QBX.PlayerData.position,
+            skipConfirmation = false
+        }
+    }}
     if cfg.Locations then
         for k, v in pairs(cfg.Locations) do
             table.insert(opt, {
@@ -78,7 +80,8 @@ local function Init()
                 disabled = not CanChooseSpawn(v.Spawn),
                 onSelect = PointSelect,
                 args = {
-                    pos = v.Spawn
+                    pos = v.Spawn,
+                    skipConfirmation = false
                 }
             })
             hasLocsToChoose = hasLocsToChoose or CanChooseSpawn(v.Spawn)
@@ -119,12 +122,18 @@ local function ChooseSpawn(letChoose)
     if IsScreenFadedOut() then
         DoScreenFadeIn(500)
     end
-    if  (cfg.AlwaysChooseSpawn or letChoose or not CanChooseSpawn(QBX.PlayerData.position)) or (not GlobalState['firstLogin'][tostring(QBX.PlayerData.citizenid)] and hasLocsToChoose) then
+    local isFirstSpawn = not GlobalState['firstLogin'][tostring(QBX.PlayerData.citizenid)]
+    local canChooseSpawn = CanChooseSpawn(QBX.PlayerData.position)
+    Init()
+    if hasLocsToChoose and (letChoose or canChooseSpawn or isFirstSpawn) then
         SwitchToMultiFirstpart(cache.ped, 0, 1)
         lib.showContext('spawnselector')
     else
-        if not CanChooseSpawn(QBX.PlayerData.position) then
-            PointSelect({ pos = cfg.DefaultLocation })
+        if not canChooseSpawn then
+            PointSelect({
+                pos = cfg.DefaultLocation,
+                skipConfirmation = false
+            })
         else
             PointSelect({
                 pos = QBX.PlayerData.position,
@@ -135,9 +144,12 @@ local function ChooseSpawn(letChoose)
 end
 
 RegisterNetEvent('qb-spawn:client:openUI', function()
-    ChooseSpawn()
+    ChooseSpawn(cfg.AlwaysChooseSpawn)
 end)
 
-exports('chooseSpawn', ChooseSpawn)
+-- Sim, fiz isso só pra economizar no if, me julgue :P
+local function chooseSpawn()
+    ChooseSpawn(cfg.AlwaysChooseSpawn)
+end
 
-Init()
+exports('chooseSpawn', chooseSpawn)
