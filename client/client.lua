@@ -109,12 +109,6 @@ local function Init()
             SwitchToMultiFirstpart(cache.ped, 0, 1)
         end
     })
-
-    if cfg.Debug then
-        RegisterCommand('choose', function()
-            exports[GetCurrentResourceName()]:chooseSpawn(true)
-        end, false)
-    end
 end
 
 local function ChooseSpawn(letChoose)
@@ -153,3 +147,9 @@ local function chooseSpawn()
 end
 
 exports('chooseSpawn', chooseSpawn)
+
+if cfg.Debug then
+    RegisterCommand('choose', function()
+        exports[GetCurrentResourceName()]:chooseSpawn(true)
+    end, false)
+end
