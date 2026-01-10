@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, Leaf, Umbrella, Bed, Home, MapPin, Building } from 'lucide-react'
-import { Card } from './components/ui/card'
+import { Shield, Leaf, Umbrella, Bed, Home, MapPin, Building, ArrowRight, ChevronRight, CheckCircle2, Maximize2, RefreshCw } from 'lucide-react'
 import { cn } from './lib/utils'
 
 declare function GetParentResourceName(): string
@@ -14,32 +13,71 @@ interface SpawnLocation {
   first_time?: boolean
 }
 
+// Configuração de cores vibrantes para cada tipo de ícone (estilo GTA V)
+const iconConfig: Record<string, { icon: any; color: string; iconColor: string; glowColor: string }> = {
+  shield: { 
+    icon: Shield, 
+    color: 'text-blue-400', 
+    iconColor: '#60A5FA', // blue-400
+    glowColor: 'rgba(96, 165, 250, 0.3)' 
+  },
+  leaf: { 
+    icon: Leaf, 
+    color: 'text-emerald-400', 
+    iconColor: '#34D399', // emerald-400
+    glowColor: 'rgba(52, 211, 153, 0.3)' 
+  },
+  umbrella: { 
+    icon: Umbrella, 
+    color: 'text-amber-400', 
+    iconColor: '#FBBF24', // amber-400
+    glowColor: 'rgba(251, 191, 36, 0.3)' 
+  },
+  bed: { 
+    icon: Bed, 
+    color: 'text-violet-400', 
+    iconColor: '#A78BFA', // violet-400
+    glowColor: 'rgba(167, 139, 250, 0.3)' 
+  },
+  home: { 
+    icon: Home, 
+    color: 'text-orange-400', 
+    iconColor: '#FB923C', // orange-400
+    glowColor: 'rgba(251, 146, 60, 0.3)' 
+  },
+  building: { 
+    icon: Building, 
+    color: 'text-cyan-400', 
+    iconColor: '#22D3EE', // cyan-400
+    glowColor: 'rgba(34, 211, 238, 0.3)' 
+  },
+  'map-pin': { 
+    icon: MapPin, 
+    color: 'text-rose-400', 
+    iconColor: '#FB7185', // rose-400
+    glowColor: 'rgba(251, 113, 133, 0.3)' 
+  },
+}
+
 function App() {
   const [isOpen, setIsOpen] = useState(false)
   const [spawns, setSpawns] = useState<SpawnLocation[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isReadyToSpawn, setIsReadyToSpawn] = useState(false)
 
-  // Icon mapping
-  const getIcon = (iconName?: string) => {
-    switch (iconName) {
-      case 'shield':
-        return <Shield className="w-5 h-5" />
-      case 'leaf':
-        return <Leaf className="w-5 h-5" />
-      case 'umbrella':
-        return <Umbrella className="w-5 h-5" />
-      case 'bed':
-        return <Bed className="w-5 h-5" />
-      case 'home':
-        return <Home className="w-5 h-5" />
-      case 'building':
-        return <Building className="w-5 h-5" />
-      case 'map-pin':
-        return <MapPin className="w-5 h-5" />
-      default:
-        return <MapPin className="w-5 h-5" />
-    }
+  // Icon mapping com cores vibrantes
+  const getIcon = (iconName?: string, size: string = 'w-6 h-6', isSelected: boolean = false) => {
+    const config = iconConfig[iconName || 'map-pin'] || iconConfig['map-pin']
+    const IconComponent = config.icon
+    return (
+      <IconComponent 
+        className={cn(size, config.color, 'transition-all duration-300', isSelected && 'drop-shadow-lg')}
+        style={{ 
+          filter: isSelected ? `drop-shadow(0 0 8px ${config.glowColor})` : 'none',
+          color: config.iconColor
+        }}
+      />
+    )
   }
 
   const handleConfirmSpawn = useCallback(async () => {
@@ -182,71 +220,138 @@ function App() {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Background overlay com visualização do mapa (opcional - será renderizado pelo jogo) */}
-      <div className="absolute inset-0 bg-black/50" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+      {/* Background overlay mínimo */}
+      <div className="absolute inset-0 bg-black/20 pointer-events-none" />
       
       {/* Conteúdo principal */}
-      <div className="relative w-full h-full flex">
-        {/* Área esquerda - Instruções */}
-        <div className="absolute top-8 left-8 z-10 text-white">
-          <h1 className="text-4xl font-bold mb-2">SPAWN LOCATION</h1>
-          <p className="text-lg text-gray-300 mb-4">Select where you want to start</p>
-          <div className="space-y-1 text-sm text-gray-400">
-            <p>Click on a location to view it on the map</p>
-            {isReadyToSpawn ? (
-              <p className="text-green-400 font-bold">
-                Press <span className="text-white">ENTER</span> to spawn at selected location
-              </p>
+      <div className="relative w-full h-full flex pointer-events-auto">
+        {/* Área superior esquerda - Controles minimalistas */}
+        <div className="absolute top-6 left-6 z-10 flex items-center gap-4">
+          <div className="flex items-center gap-2 text-white/80 text-xs font-medium">
+            <Maximize2 className="w-4 h-4" />
+            <span>RGX</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="w-6 h-6 flex items-center justify-center text-white/60 hover:text-white/90 transition-colors">
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <button className="w-6 h-6 flex items-center justify-center text-white/60 hover:text-white/90 transition-colors">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <button className="w-6 h-6 flex items-center justify-center text-white/60 hover:text-white/90 transition-colors">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Área superior direita - Controle de refresh */}
+        <div className="absolute top-6 right-6 z-10">
+          <button className="w-6 h-6 flex items-center justify-center text-white/60 hover:text-white/90 transition-colors">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Lista de spawns à direita - SEM FUNDO, estilo minimalista como GTA V */}
+        <div className="absolute top-1/2 right-8 -translate-y-1/2 z-10 w-[420px] pointer-events-auto">
+          <div className="space-y-2 max-h-[75vh] overflow-y-auto pr-3 custom-scrollbar">
+            {spawns.length > 0 ? (
+              spawns.map((spawn, index) => {
+                const isSelected = selectedIndex === index
+                const displayLabel = spawn.label === 'last_location' ? 'Last Location' : spawn.label
+                
+                return (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      setSelectedIndex(index)
+                      handleSelectSpawn(index)
+                    }}
+                    onMouseEnter={() => {
+                      if (!isSelected) setSelectedIndex(index)
+                    }}
+                    className={cn(
+                      "w-full flex items-start gap-3 py-3 px-2 rounded-lg transition-all duration-200 text-left cursor-pointer group relative spawn-item",
+                      "border-l-2",
+                      isSelected
+                        ? "border-white/60 bg-white/5"
+                        : "border-transparent hover:border-white/20 hover:bg-white/2"
+                    )}
+                  >
+                    {/* Linha vertical de seleção */}
+                    {isSelected && (
+                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white/80 rounded-full" />
+                    )}
+
+                    {/* Ícone colorido antes do nome */}
+                    <div className={cn(
+                      "flex-shrink-0 mt-0.5 transition-all duration-200",
+                      isSelected ? "scale-110" : "scale-100"
+                    )}>
+                      {getIcon(spawn.icon, 'w-5 h-5', isSelected)}
+                    </div>
+                    
+                    {/* Texto - nome e descrição */}
+                    <div className="flex-1 min-w-0">
+                      {/* Nome do spawn */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={cn(
+                          "font-semibold text-lg leading-tight transition-all duration-200",
+                          isSelected ? "text-white" : "text-white/80 group-hover:text-white/90"
+                        )}>
+                          {displayLabel}
+                        </p>
+                        
+                        {/* Indicador de seleção */}
+                        {isSelected && (
+                          <div className="ml-auto flex-shrink-0">
+                            <CheckCircle2 className="w-4 h-4 text-white/70" />
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Descrição abaixo */}
+                      <p className={cn(
+                        "text-xs mt-0.5 leading-relaxed transition-colors duration-200",
+                        isSelected ? "text-white/70" : "text-white/50 group-hover:text-white/60"
+                      )}>
+                        {spawn.description || `Start at ${displayLabel.toLowerCase()}`}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })
             ) : (
-              <p>Press <span className="font-bold text-white">ESC</span> to cancel</p>
+              <div className="text-center text-white/60 py-12">
+                <div className="animate-spin w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full mx-auto mb-3" />
+                <p className="text-sm">Carregando locais...</p>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Lista de spawns à direita */}
-        <div className="absolute top-1/2 right-8 -translate-y-1/2 z-10">
-          <Card className="w-80 bg-gray-900/90 border-gray-700 backdrop-blur-md">
-            <div className="p-4 max-h-[600px] overflow-y-auto">
-              <div className="space-y-2">
-                {spawns.length > 0 ? (
-                  spawns.map((spawn, index) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        setSelectedIndex(index)
-                        handleSelectSpawn(index)
-                      }}
-                      onMouseEnter={() => setSelectedIndex(index)}
-                      className={cn(
-                        "w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left cursor-pointer",
-                        selectedIndex === index
-                          ? "bg-white/20 text-white"
-                          : "bg-white/5 text-gray-300 hover:bg-white/10"
-                      )}
-                    >
-                      <div className="flex-shrink-0 text-white">
-                        {getIcon(spawn.icon)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-white truncate">
-                          {spawn.label === 'last_location' ? 'Last Location' : spawn.label}
-                        </p>
-                        <p className="text-xs text-gray-400 truncate">
-                          {spawn.description || `Start at ${spawn.label}`}
-                        </p>
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="text-center text-gray-400 py-4">
-                    <p>Carregando locais...</p>
-                  </div>
-                )}
+        {/* Instruções inferiores esquerdas - apenas quando pronto para spawnar */}
+        {isReadyToSpawn && (
+          <div className="absolute bottom-8 left-8 z-10 pointer-events-auto">
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-emerald-500/20 border border-emerald-500/40 rounded-lg backdrop-blur-md shadow-lg">
+              <ArrowRight className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              <div>
+                <p className="text-emerald-300 font-semibold text-sm">
+                  Pressione <span className="text-white font-bold px-2 py-0.5 bg-white/20 rounded mx-1">ENTER</span> para spawnar
+                </p>
               </div>
             </div>
-          </Card>
-        </div>
+          </div>
+        )}
+
+        {/* Instrução de cancelamento (sempre visível, mas discreta) */}
+        {!isReadyToSpawn && (
+          <div className="absolute bottom-6 left-8 z-10 pointer-events-auto">
+            <p className="text-white/40 text-xs font-medium">
+              Pressione <span className="text-white/60 font-semibold">ESC</span> para cancelar
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
