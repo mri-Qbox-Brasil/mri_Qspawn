@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, Leaf, Umbrella, Bed, Home, MapPin, Building, ArrowRight, ChevronRight, CheckCircle2, Maximize2, RefreshCw } from 'lucide-react'
+import { Shield, Leaf, Umbrella, Bed, Home, MapPin, Building, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { cn } from './lib/utils'
 
 declare function GetParentResourceName(): string
@@ -64,6 +64,8 @@ function App() {
   const [spawns, setSpawns] = useState<SpawnLocation[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isReadyToSpawn, setIsReadyToSpawn] = useState(false)
+  const [hasAutoSelected, setHasAutoSelected] = useState(false)
+  const [mapIcons, setMapIcons] = useState<Array<{x: number, y: number, icon: string, label: string, iconColor: string}>>([])
 
   // Icon mapping com cores vibrantes
   const getIcon = (iconName?: string, size: string = 'w-6 h-6', isSelected: boolean = false) => {
@@ -109,7 +111,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ returnToMultichar: true }),
       })
       setIsOpen(false)
       setIsReadyToSpawn(false)
@@ -153,6 +155,7 @@ function App() {
       if (data && data.action === 'open') {
         console.log('[mri_Qspawn] Ação: open. Spawns recebidos:', data.spawns)
         setIsOpen(true)
+        setHasAutoSelected(false)
         if (data.spawns && Array.isArray(data.spawns) && data.spawns.length > 0) {
           console.log(`[mri_Qspawn] ${data.spawns.length} spawns recebidos via mensagem`)
           setSpawns(data.spawns)
@@ -165,6 +168,13 @@ function App() {
         setIsOpen(false)
         setSelectedIndex(0)
         setIsReadyToSpawn(false)
+        setHasAutoSelected(false)
+        setMapIcons([])
+      } else if (data && data.action === 'updateMapIcon') {
+        if (data.allIcons && Array.isArray(data.allIcons)) {
+          // Atualizar todos os ícones de uma vez
+          setMapIcons(data.allIcons)
+        }
       }
     }
 
@@ -174,6 +184,18 @@ function App() {
       window.removeEventListener('message', handleMessage)
     }
   }, [isOpen, loadSpawns])
+
+  // Selecionar automaticamente o last_location quando spawns são carregados e UI está aberta
+  useEffect(() => {
+    if (isOpen && spawns.length > 0 && !hasAutoSelected && !isReadyToSpawn) {
+      const timer = setTimeout(() => {
+        handleSelectSpawn(0)
+        setHasAutoSelected(true)
+      }, 400)
+      return () => clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, spawns.length, hasAutoSelected])
 
   // Handle keyboard input para ESC e ENTER (separado para ter acesso aos estados atualizados)
   useEffect(() => {
@@ -196,9 +218,10 @@ function App() {
     }
   }, [isOpen, isReadyToSpawn, handleConfirmSpawn, handleClose])
 
-  const handleSelectSpawn = async (index: number) => {
+  const handleSelectSpawn = useCallback(async (index: number) => {
     if (index < 0 || index >= spawns.length) return
 
+    setSelectedIndex(index)
     try {
       const response = await fetch(`https://${GetParentResourceName()}/selectSpawn`, {
         method: 'POST',
@@ -215,7 +238,7 @@ function App() {
     } catch (error) {
       console.error('Erro ao selecionar spawn:', error)
     }
-  }
+  }, [spawns.length])
 
   if (!isOpen) return null
 
@@ -226,30 +249,73 @@ function App() {
       
       {/* Conteúdo principal */}
       <div className="relative w-full h-full flex pointer-events-auto">
-        {/* Área superior esquerda - Controles minimalistas */}
-        <div className="absolute top-6 left-6 z-10 flex items-center gap-4">
-          <div className="flex items-center gap-2 text-white/80 text-xs font-medium">
-            <Maximize2 className="w-4 h-4" />
-            <span>RGX</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="w-6 h-6 flex items-center justify-center text-white/60 hover:text-white/90 transition-colors">
-              <ArrowRight className="w-4 h-4" />
-            </button>
-            <button className="w-6 h-6 flex items-center justify-center text-white/60 hover:text-white/90 transition-colors">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <button className="w-6 h-6 flex items-center justify-center text-white/60 hover:text-white/90 transition-colors">
-              <ChevronRight className="w-4 h-4" />
-            </button>
+        {/* Título Spawn Selector - Centralizado no topo */}
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10">
+          <div className="flex items-center gap-2 text-white text-lg font-semibold">
+            <MapPin className="w-5 h-5" />
+            <span>SPAWN SELECTOR</span>
           </div>
         </div>
 
-        {/* Área superior direita - Controle de refresh */}
-        <div className="absolute top-6 right-6 z-10">
-          <button className="w-6 h-6 flex items-center justify-center text-white/60 hover:text-white/90 transition-colors">
-            <RefreshCw className="w-4 h-4" />
-          </button>
+        {/* Todos os ícones React renderizados no mapa (sobreposto nas coordenadas 3D) */}
+        {mapIcons.map((mapIcon, index) => (
+          mapIcon && (
+            <div
+              key={index}
+              className="fixed pointer-events-none z-50 flex flex-col items-center justify-center transition-all duration-75"
+              style={{
+                left: `${mapIcon.x * 100}%`,
+                top: `${mapIcon.y * 100}%`,
+                transform: 'translate(-50%, -50%)',
+              }}
+            >
+              {/* Ícone React do menu - idêntico ao que aparece na lista */}
+              <div className="flex flex-col items-center gap-2">
+                {/* Ícone */}
+                <div
+                  style={{
+                    color: `rgb(${mapIcon.iconColor})`,
+                    filter: `drop-shadow(0 0 15px rgba(${mapIcon.iconColor}, 0.8))`,
+                  }}
+                  className="flex-shrink-0"
+                >
+                  {getIcon(mapIcon.icon, 'w-8 h-8', true)}
+                </div>
+                {/* Nome - SEM FUNDO, apenas texto */}
+                <span 
+                  className="text-white font-semibold text-base whitespace-nowrap drop-shadow-lg"
+                  style={{
+                    textShadow: '2px 2px 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.8)'
+                  }}
+                >
+                  {mapIcon.label}
+                </span>
+              </div>
+            </div>
+          )
+        ))}
+
+        {/* Instruções de teclado - Centralizado embaixo */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4">
+          {isReadyToSpawn ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 border border-emerald-500/40 rounded-lg" style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)' }}>
+              <ArrowRight className="w-4 h-4 text-emerald-400" />
+              <span className="text-emerald-300 font-medium text-sm">
+                Pressione <span className="text-white font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.2)' }}>ENTER</span> para spawnar
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1.5 border border-white/20 rounded-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}>
+              <span className="text-white/70 font-medium text-sm">
+                Pressione <span className="text-white font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.2)' }}>E</span> para selecionar
+              </span>
+            </div>
+          )}
+          <div className="flex items-center gap-2 px-3 py-1.5 border border-white/20 rounded-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}>
+            <span className="text-white/70 font-medium text-sm">
+              Pressione <span className="text-white font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.2)' }}>ESC</span> para voltar
+            </span>
+          </div>
         </div>
 
         {/* Lista de spawns à direita - SEM FUNDO, estilo minimalista como GTA V */}
@@ -264,24 +330,24 @@ function App() {
                   <button
                     key={index}
                     onClick={() => {
-                      setSelectedIndex(index)
                       handleSelectSpawn(index)
                     }}
-                    onMouseEnter={() => {
-                      if (!isSelected) setSelectedIndex(index)
+                    className="w-full flex items-start gap-3 py-3 px-2 rounded-lg transition-all duration-200 text-left cursor-pointer group relative spawn-item"
+                    style={{
+                      backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.05)' : 'transparent'
                     }}
-                    className={cn(
-                      "w-full flex items-start gap-3 py-3 px-2 rounded-lg transition-all duration-200 text-left cursor-pointer group relative spawn-item",
-                      "border-l-2",
-                      isSelected
-                        ? "border-white/60 bg-white/5"
-                        : "border-transparent hover:border-white/20 hover:bg-white/2"
-                    )}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        setSelectedIndex(index)
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }
+                    }}
                   >
-                    {/* Linha vertical de seleção */}
-                    {isSelected && (
-                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white/80 rounded-full" />
-                    )}
 
                     {/* Ícone colorido antes do nome */}
                     <div className={cn(
@@ -330,28 +396,7 @@ function App() {
           </div>
         </div>
 
-        {/* Instruções inferiores esquerdas - apenas quando pronto para spawnar */}
-        {isReadyToSpawn && (
-          <div className="absolute bottom-8 left-8 z-10 pointer-events-auto">
-            <div className="flex items-center gap-3 px-4 py-2.5 bg-emerald-500/20 border border-emerald-500/40 rounded-lg backdrop-blur-md shadow-lg">
-              <ArrowRight className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-              <div>
-                <p className="text-emerald-300 font-semibold text-sm">
-                  Pressione <span className="text-white font-bold px-2 py-0.5 bg-white/20 rounded mx-1">ENTER</span> para spawnar
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Instrução de cancelamento (sempre visível, mas discreta) */}
-        {!isReadyToSpawn && (
-          <div className="absolute bottom-6 left-8 z-10 pointer-events-auto">
-            <p className="text-white/40 text-xs font-medium">
-              Pressione <span className="text-white/60 font-semibold">ESC</span> para cancelar
-            </p>
-          </div>
-        )}
       </div>
     </div>
   )

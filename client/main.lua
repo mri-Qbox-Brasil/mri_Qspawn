@@ -208,79 +208,97 @@ local function stopCamera()
     end
 end
 
--- Thread para renderizar marcadores no mapa
+-- Função para obter tipo de marcador e cor baseado no tipo de ícone
+-- Usa diferentes tipos de marcadores para criar formas diferentes (similar aos ícones do menu)
+local function getMarkerConfig(iconType)
+    -- Retornar tipo de marcador, cor e forma baseado no ícone
+    -- Tipo 1 = cilindro vertical, Tipo 2 = seta para cima, Tipo 3 = flecha, Tipo 28 = cilindro fino, etc.
+    local markerConfig = {
+        ['shield'] = { type = 2, r = 96, g = 165, b = 250 }, -- Azul, seta (shield/police)
+        ['leaf'] = { type = 1, r = 52, g = 211, b = 153 }, -- Verde, cilindro (natureza)
+        ['umbrella'] = { type = 3, r = 251, g = 191, b = 36 }, -- Amarelo, flecha (praia)
+        ['bed'] = { type = 28, r = 167, g = 139, b = 250 }, -- Roxo, cilindro fino (motel)
+        ['home'] = { type = 1, r = 251, g = 146, b = 60 }, -- Laranja, cilindro (casa)
+        ['building'] = { type = 2, r = 34, g = 211, b = 238 }, -- Ciano, seta (edifício)
+        ['map-pin'] = { type = 1, r = 251, g = 113, b = 133 } -- Rosa, cilindro (padrão)
+    }
+    return markerConfig[iconType] or markerConfig['map-pin']
+end
+
+-- Thread para renderizar TODOS os marcadores no mapa
 local markerThread = nil
-local currentMarkerSpawn = nil
+local lastValidIconPositions = {} -- Armazenar últimas posições válidas por índice
 
 local function startMarkerThread()
     if markerThread then return end -- Já está rodando
     
     markerThread = CreateThread(function()
-        while isNuiOpen and currentMarkerSpawn do
-            local spawn = currentMarkerSpawn
-            if spawn and spawn.coords then
-                local x, y, z = getCoordsValues(spawn.coords)
-                if x and y and z then
-                    -- Desenhar marcador no chão
-                    DrawMarker(
-                        1, -- Tipo: marker vertical
-                        x, y, z - 1.0, -- Posição (um pouco abaixo do chão)
-                        0.0, 0.0, 0.0, -- Direção
-                        0.0, 0.0, 0.0, -- Rotação
-                        2.0, 2.0, 1.0, -- Escala (largura, altura, comprimento)
-                        0, 255, 255, 200, -- Cor (ciano)
-                        false, -- Bob (animação)
-                        true, -- Face camera
-                        2, -- p19
-                        false, -- Rotate
-                        nil, -- textureDict
-                        nil, -- textureName
-                        false -- Draw on entities
-                    )
-                    
-                    -- Desenhar texto 3D acima do marcador
-                    local onScreen, _x, _y = World3dToScreen2d(x, y, z + 2.0)
-                    if onScreen then
-                        SetTextScale(0.35, 0.35)
-                        SetTextFont(4)
-                        SetTextProportional(1)
-                        SetTextColour(255, 255, 255, 255)
-                        SetTextDropshadow(0, 0, 0, 0, 255)
-                        SetTextEdge(2, 0, 0, 0, 255)
-                        SetTextDropShadow()
-                        SetTextOutline()
-                        SetTextEntry("STRING")
-                        SetTextCentre(1)
-                        AddTextComponentString(spawn.label or 'Location')
-                        DrawText(_x, _y)
+        while isNuiOpen do
+            -- Renderizar TODOS os spawns no mapa
+            local allIcons = {}
+            
+            for i = 1, #spawns do
+                local spawn = spawns[i]
+                if spawn and spawn.coords then
+                    local x, y, z = getCoordsValues(spawn.coords)
+                    if x and y and z then
+                        local markerConfig = getMarkerConfig(spawn.icon or 'map-pin')
+                        
+                        -- Converter coordenadas 3D para 2D da tela
+                        local iconOnScreen, icon_x, icon_y = World3dToScreen2d(x, y, z + 1.0)
+                        
+                        -- Só adicionar ícone se estiver na tela (iconOnScreen = true) e com coordenadas válidas
+                        -- Validar que as coordenadas estão dentro dos limites (0.0 a 1.0)
+                        if iconOnScreen and icon_x and icon_y and icon_x >= 0.0 and icon_x <= 1.0 and icon_y >= 0.0 and icon_y <= 1.0 then
+                            local xPos = math.max(0.0, math.min(1.0, icon_x))
+                            local yPos = math.max(0.0, math.min(1.0, icon_y))
+                            
+                            -- Armazenar última posição válida para este índice
+                            lastValidIconPositions[i] = { x = xPos, y = yPos }
+                            
+                            -- Adicionar ícone ao array apenas se estiver visível na tela
+                            allIcons[#allIcons + 1] = {
+                                x = xPos,
+                                y = yPos,
+                                icon = spawn.icon or 'map-pin',
+                                label = spawn.label == 'last_location' and 'Last Location' or (spawn.label or 'Location'),
+                                iconColor = markerConfig.r .. ',' .. markerConfig.g .. ',' .. markerConfig.b
+                            }
+                        end
+                        -- Se não está na tela, não adicionar ao array (não usar posição padrão para evitar aparecer no canto)
                     end
                 end
             end
-            Wait(0)
+            
+            -- Enviar todos os ícones de uma vez para React
+            SendNUIMessage({
+                action = 'updateMapIcon',
+                allIcons = allIcons
+            })
+            
+            Wait(0) -- Verificar a cada frame para posição precisa
         end
         markerThread = nil
     end)
 end
 
 local function stopMarkerThread()
-    currentMarkerSpawn = nil
-    -- A thread vai parar automaticamente quando currentMarkerSpawn for nil
+    markerThread = nil
+    -- Limpar todas as posições
+    lastValidIconPositions = {}
+    -- Ocultar todos os ícones
+    SendNUIMessage({
+        action = 'updateMapIcon',
+        allIcons = {}
+    })
 end
 
 local function updateMapMarker(spawnIndex)
-    if not spawnIndex or spawnIndex < 1 or spawnIndex > #spawns then 
-        stopMarkerThread()
-        return 
+    -- Não precisa mais fazer nada aqui, a thread renderiza todos automaticamente
+    -- Mas vamos garantir que a thread está rodando
+    if not markerThread then
+        startMarkerThread()
     end
-    
-    local spawn = spawns[spawnIndex]
-    if not spawn or not spawn.coords then 
-        stopMarkerThread()
-        return 
-    end
-    
-    currentMarkerSpawn = spawn
-    startMarkerThread()
 end
 
 -- Função para configurar o mapa aéreo (renderizar minimap expandido)
@@ -513,6 +531,21 @@ local function openSpawnUI()
         spawns = serializedSpawns,
     })
     
+    -- Selecionar automaticamente o primeiro spawn (last_location)
+    if #spawns > 0 and spawns[1] then
+        selectedSpawn = spawns[1]
+        selectedSpawnIndex = 1
+        print(string.format('[mri_Qspawn] Selecionando automaticamente: %s (índice 1)', spawns[1].label or 'last_location'))
+        -- Iniciar thread para renderizar todos os ícones no mapa
+        CreateThread(function()
+            Wait(300) -- Delay mínimo apenas para garantir que a câmera está ativa
+            if isNuiOpen then
+                -- Iniciar thread que renderiza TODOS os spawns no mapa
+                startMarkerThread()
+            end
+        end)
+    end
+    
     print('[mri_Qspawn] UI aberta com sucesso!')
 end
 
@@ -548,90 +581,62 @@ local function moveCameraToLocation(coords, duration)
         return
     end
     
-    -- Parar animação anterior se houver (mas SEM reposicionar a câmera - manter posição atual)
+    -- Parar animação anterior suavemente (sem resetar a câmera)
     cancelCameraAnimation()
     stopCameraDrift()
     
-    -- IMPORTANTE: Aguardar tempo suficiente para garantir que a thread anterior parou COMPLETAMENTE
-    -- e que a câmera está estável na sua posição atual (sem cortes ou resets)
-    Wait(150) -- Aguardar 150ms para garantir que tudo parou completamente e a câmera está estável
+    -- Aguardar um pouco para a thread anterior parar completamente (menos delay para transição mais rápida)
+    Wait(50)
     
-    -- IMPORTANTE: Sempre usar a posição do spawn anterior OU last_location como ponto de partida
-    -- Nunca usar GetCamCoord pois pode retornar valores incorretos se a câmera já foi movida
-    local camX, camY, camZ
-    local camPitch, camRoll, camYaw
+    -- IMPORTANTE: Usar a posição ATUAL da câmera como ponto de partida para transições suaves
+    -- Isso evita resets ou "pulos" visuais
+    local camX, camY, camZ = GetCamCoord(previewCam)
+    local camRot = GetCamRot(previewCam, 2)
+    local camPitch = camRot.x or -90.0
+    local camRoll = camRot.y or 0.0
+    local camYaw = camRot.z or 0.0
     
-    if previousSelectedSpawn and previousSelectedSpawn.coords and previousSelectedSpawnIndex then
-        -- Se temos um spawn anterior selecionado, usar sua posição como ponto de partida
-        local prevX, prevY, prevZ = getCoordsValues(previousSelectedSpawn.coords)
-        if prevX and prevY and prevZ then
-            camX, camY = prevX, prevY
-            local groundZ = getGroundZAtPoint(prevX, prevY, prevZ)
-            camZ = calculatePreviewHeight(prevX, prevY, groundZ)
-            camPitch = -90.0
-            camRoll = 0.0
-            camYaw = 0.0
-            print(string.format('[mri_Qspawn] Usando spawn ANTERIOR como ponto de partida: %s (%.2f, %.2f, %.2f)', 
-                previousSelectedSpawn.label or 'sem label', camX, camY, camZ))
+    -- Verificar se a posição da câmera é válida
+    if not camX or not camY or not camZ or camX == 0.0 then
+        -- Se a câmera não tem posição válida, usar spawn anterior ou last_location
+        if previousSelectedSpawn and previousSelectedSpawn.coords and previousSelectedSpawnIndex then
+            local prevX, prevY, prevZ = getCoordsValues(previousSelectedSpawn.coords)
+            if prevX and prevY and prevZ then
+                camX, camY = prevX, prevY
+                local groundZ = getGroundZAtPoint(prevX, prevY, prevZ)
+                camZ = calculatePreviewHeight(prevX, prevY, groundZ)
+                camPitch = -90.0
+                camRoll = 0.0
+                camYaw = 0.0
+            end
         end
-    end
-    
-    -- Se não temos spawn anterior, usar a last_location como ponto de partida (sempre existe e é a posição inicial da câmera)
-    if not camX or not camY or not camZ then
-        print(string.format('[mri_Qspawn] Sem spawn anterior (previousSelectedSpawn é nil), buscando last_location em %d spawns disponíveis', #spawns))
-        local foundLastLocation = false
-        for i = 1, #spawns do
-            if spawns[i] and spawns[i].label == 'last_location' and spawns[i].coords then
-                print(string.format('[mri_Qspawn] Last_location encontrada no índice %d', i))
-                local lastX, lastY, lastZ = getCoordsValues(spawns[i].coords)
-                if lastX and lastY and lastZ then
-                    camX, camY = lastX, lastY
-                    local groundZ = getGroundZAtPoint(lastX, lastY, lastZ)
-                    camZ = calculatePreviewHeight(lastX, lastY, groundZ)
-                    camPitch = -90.0
-                    camRoll = 0.0
-                    camYaw = 0.0
-                    foundLastLocation = true
-                    print(string.format('[mri_Qspawn] Usando last_location como ponto de partida: (%.2f, %.2f, %.2f) [altura: %.2f]', camX, camY, camZ, camZ))
-                    break
-                else
-                    print(string.format('[mri_Qspawn] ERRO: Last_location no índice %d tem coordenadas inválidas', i))
+        
+        -- Se ainda não temos coordenadas válidas, usar last_location
+        if not camX or camX == 0.0 then
+            for i = 1, #spawns do
+                if spawns[i] and spawns[i].label == 'last_location' and spawns[i].coords then
+                    local lastX, lastY, lastZ = getCoordsValues(spawns[i].coords)
+                    if lastX and lastY and lastZ then
+                        camX, camY = lastX, lastY
+                        local groundZ = getGroundZAtPoint(lastX, lastY, lastZ)
+                        camZ = calculatePreviewHeight(lastX, lastY, groundZ)
+                        camPitch = -90.0
+                        camRoll = 0.0
+                        camYaw = 0.0
+                        break
+                    end
                 end
             end
         end
-        if not foundLastLocation then
-            print('[mri_Qspawn] ERRO: Last_location não foi encontrada na tabela de spawns!')
-        end
-    end
-    
-    -- Se ainda não temos coordenadas, usar a posição inicial armazenada da câmera
-    if not camX or not camY or not camZ then
-        if initialCameraPosition and initialCameraPosition.x and initialCameraPosition.y and initialCameraPosition.z then
-            camX, camY, camZ = initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z
-            local groundZ = getGroundZAtPoint(camX, camY, camZ)
-            camZ = calculatePreviewHeight(camX, camY, groundZ)
-            camPitch = -90.0
-            camRoll = 0.0
-            camYaw = 0.0
-            print(string.format('[mri_Qspawn] Usando posição inicial armazenada da câmera como ponto de partida: (%.2f, %.2f, %.2f)', camX, camY, camZ))
-        else
-            -- Último recurso: usar destino (não ideal, mas evita erro)
-            print('[mri_Qspawn] ERRO: Não foi possível determinar ponto de partida, usando destino como último recurso')
-            camX, camY = endX, endY
-            local groundZ = getGroundZAtPoint(endX, endY, endZ)
-            camZ = calculatePreviewHeight(endX, endY, groundZ)
-            camPitch = -90.0
-            camRoll = 0.0
-            camYaw = 0.0
-        end
     else
-        -- Normalizar altura se muito diferente (manter altura calculada baseada no chão)
+        -- Garantir que a altura está dentro do esperado para evitar saltos
         local groundZStart = getGroundZAtPoint(camX, camY, camZ)
         local expectedHeight = calculatePreviewHeight(camX, camY, groundZStart)
-        if math.abs(camZ - expectedHeight) > 150.0 then
+        -- Se a altura está muito diferente, ajustar suavemente (mas manter a posição X,Y atual)
+        if math.abs(camZ - expectedHeight) > 200.0 then
             camZ = expectedHeight
         end
-        -- Garantir valores de rotação
+        -- Manter rotação atual para transições mais suaves
         camPitch = camPitch or -90.0
         camRoll = camRoll or 0.0
         camYaw = camYaw or 0.0
@@ -662,9 +667,8 @@ local function moveCameraToLocation(coords, duration)
     cameraAnimationThread = CreateThread(function()
         local totalStartTime = GetGameTimer()
         
-        -- IMPORTANTE: Aguardar um pouco mais antes de começar para garantir que não há cortes ou resets
-        -- Isso garante que qualquer animação anterior foi completamente cancelada e a câmera está estável
-        Wait(100)
+        -- Aguardar um pouco antes de começar para garantir estabilidade (reduzido para transição mais rápida)
+        Wait(50)
         
         -- IMPORTANTE: Usar SEMPRE a posição passada como parâmetro (que já foi calculada corretamente)
         -- Esta posição foi calculada baseada no spawn anterior OU last_location
@@ -938,6 +942,12 @@ RegisterNUICallback('selectSpawn', function(data, cb)
     
     -- Atualizar marcador no mapa
     updateMapMarker(spawnIndex)
+    
+    -- Ocultar ícone durante a animação
+    SendNUIMessage({
+        action = 'updateMapIcon',
+        visible = false
+    })
     
     -- Apenas mover a câmera até a localização (sem spawnar)
     -- A função moveCameraToLocation usará previousSpawn ou last_location como ponto de partida
@@ -1314,8 +1324,24 @@ RegisterNUICallback('confirmSpawn', function(_, cb)
 end)
 
 -- Callback para fechar NUI
-RegisterNUICallback('close', function(_, cb)
+RegisterNUICallback('close', function(data, cb)
+    local returnToMultichar = data and data.returnToMultichar or false
     closeSpawnUI()
+    
+    -- Se deve retornar ao multichar (quando ESC é pressionado)
+    if returnToMultichar then
+        -- Aguardar um pouco para garantir que a UI foi fechada completamente
+        Wait(200)
+        -- Retornar ao multichar
+        if GetResourceState('qbx_multicharacter') == 'started' then
+            exports.qbx_multicharacter:openSelection()
+        elseif GetResourceState('qb-multicharacter') == 'started' then
+            exports['qb-multicharacter']:openSelection()
+        else
+            print('[mri_Qspawn] AVISO: Resource de multichar não encontrado')
+        end
+    end
+    
     cb({ success = true })
 end)
 

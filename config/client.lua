@@ -33,7 +33,7 @@ return {
     },
     clouds = true, -- Enable the clouds load in with wake up animation
     aerialViewHeight = 700.0, -- Altura máxima da câmera durante transições (temporário)
-    previewHeight = 400.0, -- Altura padrão da câmera no estado de visualização (visão satélite, altura mais afastada)
+    previewHeight = 500.0, -- Altura padrão da câmera no estado de visualização (visão satélite, altura mais afastada)
     previewPitch = -90.0, -- Ângulo de inclinação padrão (-90° = visão satélite, olhando diretamente para baixo)
     previewFov = 60.0, -- Campo de visão padrão
     zoomDuration = 3000, -- Duração do zoom até o jogador em ms
