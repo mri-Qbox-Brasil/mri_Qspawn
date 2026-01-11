@@ -959,10 +959,16 @@ end)
 -- Função para executar animações/eventos aleatórios ao spawnar (estilo GTA 5)
 local function playRandomSpawnEvent(spawnInfo)
     CreateThread(function()
-        local ped = cache.ped
+        -- Aguardar fade in completar e garantir que o ped está disponível
+        Wait(1500)
         
-        -- Aguardar fade in completar
-        Wait(1200)
+        local ped = PlayerPedId()
+        
+        -- Garantir que o ped existe
+        if not ped or ped == 0 then
+            print('[mri_Qspawn] AVISO: Ped não disponível para animação aleatória')
+            return
+        end
         
         -- Lista completa de animações/eventos realistas estilo GTA 5
         local spawnEvents = {
@@ -1096,7 +1102,7 @@ local function playRandomSpawnEvent(spawnInfo)
             -- Evento especial: acenar e caminhar alguns passos
             {
                 type = 'special',
-                action = function()
+                action = function(ped)
                     -- Acenar
                     RequestAnimDict('friends@frm@ig_1')
                     Wait(500)
@@ -1120,7 +1126,8 @@ local function playRandomSpawnEvent(spawnInfo)
         -- Filtrar eventos baseado em chance (método melhorado)
         local possibleEvents = {}
         for _, event in ipairs(spawnEvents) do
-            if math.random() <= (event.chance or 1.0) * 100 then
+            -- math.random() retorna valor entre 0 e 1, então comparamos diretamente com a chance
+            if math.random() <= (event.chance or 1.0) then
                 table.insert(possibleEvents, event)
             end
         end
@@ -1198,12 +1205,12 @@ local function playRandomSpawnEvent(spawnInfo)
             ClearPedTasks(ped)
             
         elseif randomEvent.type == 'special' and randomEvent.action then
-            randomEvent.action()
+            randomEvent.action(ped)
         end
         
         -- Sons aleatórios (40% de chance)
         Wait(300)
-        if math.random() <= 40 then
+        if math.random() <= 0.40 then
             local sounds = {
                 { sound = 'Breathing', set = 'MP_PLAYER_APARTMENT_SOUNDSET' },
                 { sound = 'PAPER_CRUMBLE', set = 'HUD_MINI_GAME_SOUNDSET' },
@@ -1219,7 +1226,7 @@ local function playRandomSpawnEvent(spawnInfo)
         
         -- Efeito visual de spawn (10% de chance)
         Wait(500)
-        if math.random() <= 10 then
+        if math.random() <= 0.10 then
             for i = 1, 3 do
                 SetEntityAlpha(ped, 200, false)
                 Wait(120)
@@ -1231,7 +1238,7 @@ local function playRandomSpawnEvent(spawnInfo)
         
         -- Movimento natural: olhar ao redor (60% de chance)
         Wait(800)
-        if math.random() <= 60 then
+        if math.random() <= 0.60 then
             local heading = GetEntityHeading(ped)
             -- Olhar para esquerda
             SetEntityHeading(ped, heading + math.random(30, 60))
