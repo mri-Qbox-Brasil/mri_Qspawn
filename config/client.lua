@@ -1,4 +1,6 @@
 return {
+    Locale = 'pt-br', -- Idioma para locales (pt-br, en, es, etc.)
+    
     spawns = {
         {
             label = 'Police Department',
@@ -45,5 +47,15 @@ return {
     transitionDescentDuration = 400, -- Duração da descida em ms (mais rápido)
     transitionFinalAdjustDuration = 150, -- Duração do ajuste final em ms (mais rápido)
     cameraDriftIntensity = 0.15, -- Intensidade dos micro-movimentos (0.0 = nenhum, 1.0 = máximo)
+    
+    -- Animações de spawn (scenarios do GTA V)
+    spawnAnimations = {
+        'WORLD_HUMAN_STAND_IMPATIENT', -- Esperando (impatient)
+        'WORLD_HUMAN_SMOKING', -- Fumando
+        'WORLD_HUMAN_HANG_OUT_STREET', -- Na rua
+        'WORLD_HUMAN_STAND_MOBILE', -- No celular
+        'WORLD_HUMAN_CLIPBOARD', -- Com clipboard
+    },
+    spawnAnimationDuration = 3000, -- Duração da animação em ms
 }
 

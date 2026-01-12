@@ -1,0 +1,39 @@
+{
+    "last_location": "Última Localização",
+    "select_spawn": "Selecione onde você quer começar",
+    "press_enter": "Pressione ENTER para spawnar na localização selecionada",
+    "press_esc": "Pressione ESC para cancelar",
+    "spawn_completed": "Spawn completado",
+    "player_moved_to_global_bucket": "Player movido para o bucket global (0)",
+    "error": {
+        "no_spawn_selected": "Nenhum spawn selecionado",
+        "no_spawns_available": "Nenhum spawn disponível",
+        "invalid_coordinates": "Coordenadas inválidas",
+        "camera_not_found": "Câmera não encontrada",
+        "ui_already_open": "UI já está aberta"
+    },
+    "spawns": {
+        "Police Department": "Delegacia de Polícia",
+        "Paleto Bay": "Paleto Bay",
+        "Sandy Shores": "Sandy Shores",
+        "Beach": "Praia",
+        "Motel": "Motel",
+        "Motels": "Motéis"
+    },
+    "weather": {
+        "clear": "Limpo",
+        "extrasunny": "Ensolarado",
+        "clouds": "Nublado",
+        "overcast": "Nublado",
+        "rain": "Chuva",
+        "clearing": "Limpo",
+        "thunder": "Trovão",
+        "smog": "Neblina",
+        "foggy": "Nevoeiro",
+        "xmas": "Natal",
+        "snowlight": "Neve Leve",
+        "blizzard": "Nevasca",
+        "snow": "Neve"
+    }
+}
+

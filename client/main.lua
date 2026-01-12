@@ -966,16 +966,22 @@ local function playSimpleSpawnAnimation()
             return
         end
         
-        -- Usar scenarios (mais confiáveis que animações diretas)
-        local scenarios = {
+        -- Usar animações do config
+        local animations = config.spawnAnimations or {
             'WORLD_HUMAN_STAND_IMPATIENT',
             'WORLD_HUMAN_SMOKING',
             'WORLD_HUMAN_HANG_OUT_STREET'
         }
         
-        local selectedScenario = scenarios[math.random(#scenarios)]
-        TaskStartScenarioInPlace(playerPed, selectedScenario, 0, true)
-        Wait(3000)
+        if #animations == 0 then
+            return -- Sem animações configuradas
+        end
+        
+        local selectedAnimation = animations[math.random(#animations)]
+        local duration = config.spawnAnimationDuration or 3000
+        
+        TaskStartScenarioInPlace(playerPed, selectedAnimation, 0, true)
+        Wait(duration)
         ClearPedTasks(playerPed)
     end)
 end
