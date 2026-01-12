@@ -956,301 +956,27 @@ RegisterNUICallback('selectSpawn', function(data, cb)
     cb({ success = true })
 end)
 
--- Função para executar animações/eventos aleatórios ao spawnar (estilo GTA 5)
-local function playRandomSpawnEvent(spawnInfo)
+-- Função para fazer uma animação simples ao spawnar
+local function playSimpleSpawnAnimation()
     CreateThread(function()
-        -- Aguardar fade in completar e garantir que o ped está disponível
-        Wait(1500)
+        Wait(300) -- Aguardar um pouco
         
-        local ped = PlayerPedId()
-        
-        -- Garantir que o ped existe
-        if not ped or ped == 0 then
-            print('[mri_Qspawn] AVISO: Ped não disponível para animação aleatória')
+        local playerPed = PlayerPedId()
+        if not playerPed or playerPed == 0 then
             return
         end
         
-        -- Lista completa de animações/eventos realistas estilo GTA 5
-        local spawnEvents = {
-            -- Acordar/Alongar (muito comum)
-            {
-                type = 'animation',
-                dict = 'switch@trevor@annoys_sunbathers',
-                anim = 'trev_annoys_sunbathers_loop_girl',
-                duration = 2500,
-                flag = 49,
-                chance = 0.35
-            },
-            -- Verificar celular (muito comum)
-            {
-                type = 'animation',
-                dict = 'cellphone@',
-                anim = 'cellphone_text_read_base',
-                duration = 4000,
-                flag = 49,
-                chance = 0.4
-            },
-            -- Ajustar jaqueta/casaco
-            {
-                type = 'animation',
-                dict = 'clothingshirt',
-                anim = 'try_shirt_positive_d',
-                duration = 2800,
-                flag = 49,
-                chance = 0.25
-            },
-            -- Olhar ao redor (curioso)
-            {
-                type = 'animation',
-                dict = 'amb@world_human_hang_out_street@male_a@idle_a',
-                anim = 'idle_a',
-                duration = 3500,
-                flag = 49,
-                chance = 0.3
-            },
-            -- Respirar fundo / alongar costas
-            {
-                type = 'animation',
-                dict = 'amb@world_human_jog_standing@male@idle_a',
-                anim = 'idle_a',
-                duration = 3000,
-                flag = 49,
-                chance = 0.25
-            },
-            -- Coçar a cabeça (pensativo)
-            {
-                type = 'animation',
-                dict = 'mp_player_int_upperscratch',
-                anim = 'mp_player_int_scratch_01',
-                duration = 3000,
-                flag = 49,
-                chance = 0.2
-            },
-            -- Verificar relógio
-            {
-                type = 'animation',
-                dict = 'amb@world_human_hang_out_street@female_arms_crossed@idle_a',
-                anim = 'idle_a',
-                duration = 2500,
-                flag = 49,
-                chance = 0.22
-            },
-            -- Apertar mãos / esticar
-            {
-                type = 'animation',
-                dict = 'mp_ped_interaction',
-                anim = 'handshake_guy_a',
-                duration = 3200,
-                flag = 49,
-                chance = 0.18
-            },
-            -- Acenar (como se visse alguém)
-            {
-                type = 'animation',
-                dict = 'friends@frm@ig_1',
-                anim = 'over_here_idle_a',
-                duration = 2800,
-                flag = 49,
-                chance = 0.15
-            },
-            -- Fumar (casual)
-            {
-                type = 'animation',
-                dict = 'amb@world_human_smoking@male@male_a@idle_a',
-                anim = 'idle_a',
-                duration = 4000,
-                flag = 49,
-                chance = 0.12
-            },
-            -- Mexer no cabelo
-            {
-                type = 'animation',
-                dict = 'mp_player_int_uppergrab_crotch',
-                anim = 'mp_player_int_grab_crotch',
-                duration = 2000,
-                flag = 49,
-                chance = 0.15
-            },
-            -- Verificar bolso
-            {
-                type = 'animation',
-                dict = 'move_m@confident',
-                anim = 'move_m@confident',
-                duration = 2500,
-                flag = 49,
-                chance = 0.2
-            },
-            -- Animação de "acordar de um cochilo"
-            {
-                type = 'sequence',
-                animations = {
-                    {
-                        dict = 'switch@michael@sitting',
-                        anim = 'idle',
-                        duration = 2000,
-                        flag = 1
-                    },
-                    {
-                        dict = 'switch@michael@wakes_up',
-                        anim = 'wakeup',
-                        duration = 2500,
-                        flag = 49
-                    }
-                },
-                chance = 0.1
-            },
-            -- Evento especial: acenar e caminhar alguns passos
-            {
-                type = 'special',
-                action = function(ped)
-                    -- Acenar
-                    RequestAnimDict('friends@frm@ig_1')
-                    Wait(500)
-                    if HasAnimDictLoaded('friends@frm@ig_1') then
-                        TaskPlayAnim(ped, 'friends@frm@ig_1', 'over_here_idle_a', 8.0, -8.0, 2500, 49, 0.0, false, false, false)
-                        Wait(2500)
-                    end
-                    -- Caminhar alguns passos para frente
-                    local heading = GetEntityHeading(ped)
-                    local x, y, z = GetEntityCoords(ped)
-                    local forwardX = x + math.cos(math.rad(-heading)) * 2.0
-                    local forwardY = y + math.sin(math.rad(-heading)) * 2.0
-                    TaskGoStraightToCoord(ped, forwardX, forwardY, z, 1.0, 2000, heading, 0.1)
-                    Wait(2000)
-                    ClearPedTasks(ped)
-                end,
-                chance = 0.08
-            }
+        -- Usar scenarios (mais confiáveis que animações diretas)
+        local scenarios = {
+            'WORLD_HUMAN_STAND_IMPATIENT',
+            'WORLD_HUMAN_SMOKING',
+            'WORLD_HUMAN_HANG_OUT_STREET'
         }
         
-        -- Filtrar eventos baseado em chance (método melhorado)
-        local possibleEvents = {}
-        for _, event in ipairs(spawnEvents) do
-            -- math.random() retorna valor entre 0 e 1, então comparamos diretamente com a chance
-            if math.random() <= (event.chance or 1.0) then
-                table.insert(possibleEvents, event)
-            end
-        end
-        
-        -- Se nenhum evento passou, escolher um aleatório
-        if #possibleEvents == 0 then
-            possibleEvents = { spawnEvents[math.random(#spawnEvents)] }
-        end
-        
-        -- Escolher evento aleatório
-        local randomEvent = possibleEvents[math.random(#possibleEvents)]
-        
-        -- Executar evento
-        if randomEvent.type == 'animation' then
-            local dict = randomEvent.dict
-            RequestAnimDict(dict)
-            
-            local timeout = 0
-            while not HasAnimDictLoaded(dict) and timeout < 5000 do
-                Wait(100)
-                timeout = timeout + 100
-            end
-            
-            if HasAnimDictLoaded(dict) then
-                TaskPlayAnim(
-                    ped,
-                    dict,
-                    randomEvent.anim,
-                    8.0,
-                    -8.0,
-                    randomEvent.duration or 3000,
-                    randomEvent.flag or 49,
-                    0.0,
-                    false,
-                    false,
-                    false
-                )
-                
-                Wait(randomEvent.duration or 3000)
-                ClearPedTasks(ped)
-                print(string.format('[mri_Qspawn] Animação: %s - %s', dict, randomEvent.anim))
-            end
-            
-        elseif randomEvent.type == 'sequence' then
-            -- Executar sequência de animações
-            for i, anim in ipairs(randomEvent.animations) do
-                RequestAnimDict(anim.dict)
-                local timeout = 0
-                while not HasAnimDictLoaded(anim.dict) and timeout < 5000 do
-                    Wait(100)
-                    timeout = timeout + 100
-                end
-                
-                if HasAnimDictLoaded(anim.dict) then
-                    TaskPlayAnim(
-                        ped,
-                        anim.dict,
-                        anim.anim,
-                        8.0,
-                        -8.0,
-                        anim.duration or 3000,
-                        anim.flag or 49,
-                        0.0,
-                        false,
-                        false,
-                        false
-                    )
-                    Wait(anim.duration or 3000)
-                    if i < #randomEvent.animations then
-                        ClearPedTasks(ped)
-                        Wait(200)
-                    end
-                end
-            end
-            ClearPedTasks(ped)
-            
-        elseif randomEvent.type == 'special' and randomEvent.action then
-            randomEvent.action(ped)
-        end
-        
-        -- Sons aleatórios (40% de chance)
-        Wait(300)
-        if math.random() <= 0.40 then
-            local sounds = {
-                { sound = 'Breathing', set = 'MP_PLAYER_APARTMENT_SOUNDSET' },
-                { sound = 'PAPER_CRUMBLE', set = 'HUD_MINI_GAME_SOUNDSET' },
-                { sound = 'CLICK_BACK', set = 'WEB_NAVIGATION_SOUNDS_PHONE' },
-                { sound = 'CLICK', set = 'HUD_FREEMODE_SOUNDSET' },
-                { sound = 'NAV_UP_DOWN', set = 'HUD_FREEMODE_SOUNDSET' },
-            }
-            local randomSound = sounds[math.random(#sounds)]
-            if randomSound then
-                PlaySoundFrontend(-1, randomSound.sound, randomSound.set, true)
-            end
-        end
-        
-        -- Efeito visual de spawn (10% de chance)
-        Wait(500)
-        if math.random() <= 0.10 then
-            for i = 1, 3 do
-                SetEntityAlpha(ped, 200, false)
-                Wait(120)
-                SetEntityAlpha(ped, 255, false)
-                Wait(120)
-            end
-            ResetEntityAlpha(ped)
-        end
-        
-        -- Movimento natural: olhar ao redor (60% de chance)
-        Wait(800)
-        if math.random() <= 0.60 then
-            local heading = GetEntityHeading(ped)
-            -- Olhar para esquerda
-            SetEntityHeading(ped, heading + math.random(30, 60))
-            Wait(math.random(400, 800))
-            -- Olhar para direita
-            SetEntityHeading(ped, heading - math.random(30, 60))
-            Wait(math.random(400, 800))
-            -- Voltar ao centro
-            SetEntityHeading(ped, heading)
-        end
-        
-        print('[mri_Qspawn] Eventos de spawn aleatórios concluídos')
+        local selectedScenario = scenarios[math.random(#scenarios)]
+        TaskStartScenarioInPlace(playerPed, selectedScenario, 0, true)
+        Wait(3000)
+        ClearPedTasks(playerPed)
     end)
 end
 
@@ -1316,15 +1042,19 @@ RegisterNUICallback('confirmSpawn', function(_, cb)
         TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
         TriggerEvent('QBCore:Client:OnPlayerLoaded')
         
-        -- Executar animação/evento aleatório estilo GTA 5
-        playRandomSpawnEvent(spawnInfo)
+        -- Fade in - player já está posicionado
+        DoScreenFadeIn(800)
+        Wait(800)
         
-        -- Fade in simples - agora na visão do player
-        DoScreenFadeIn(1000)
+        -- Animação simples (esperando ou fumando)
+        playSimpleSpawnAnimation()
+        
+        -- Mudar para o bucket global (0)
+        TriggerServerEvent('mri_Qmultichar:server:setBucket', 0)
+        print('[mri_Qspawn] Player movido para o bucket global (0)')
         
         TriggerServerEvent('qbx_spawn:server:spawn')
-        
-        print('[mri_Qspawn] Spawn completado - player agora está na visão normal')
+        print('[mri_Qspawn] Spawn completado')
     end)
     
     cb({ success = true })
@@ -1340,12 +1070,10 @@ RegisterNUICallback('close', function(data, cb)
         -- Aguardar um pouco para garantir que a UI foi fechada completamente
         Wait(200)
         -- Retornar ao multichar
-        if GetResourceState('qbx_multicharacter') == 'started' then
-            exports.qbx_multicharacter:openSelection()
-        elseif GetResourceState('qb-multicharacter') == 'started' then
-            exports['qb-multicharacter']:openSelection()
+        if GetResourceState('mri_Qmultichar'):find('start') then
+            exports['mri_Qmultichar']:openMultichar()
         else
-            print('[mri_Qspawn] AVISO: Resource de multichar não encontrado')
+            print('[mri_Qspawn] AVISO: Resource mri_Qmultichar não encontrado')
         end
     end
     
