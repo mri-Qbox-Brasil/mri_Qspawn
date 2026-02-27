@@ -15,47 +15,47 @@ interface SpawnLocation {
 
 // Configuração de cores vibrantes para cada tipo de ícone (estilo GTA V)
 const iconConfig: Record<string, { icon: any; color: string; iconColor: string; glowColor: string }> = {
-  shield: { 
-    icon: Shield, 
-    color: 'text-blue-400', 
+  shield: {
+    icon: Shield,
+    color: 'text-blue-400',
     iconColor: '#60A5FA', // blue-400
-    glowColor: 'rgba(96, 165, 250, 0.3)' 
+    glowColor: 'rgba(96, 165, 250, 0.3)'
   },
-  leaf: { 
-    icon: Leaf, 
-    color: 'text-emerald-400', 
+  leaf: {
+    icon: Leaf,
+    color: 'text-emerald-400',
     iconColor: '#34D399', // emerald-400
-    glowColor: 'rgba(52, 211, 153, 0.3)' 
+    glowColor: 'rgba(52, 211, 153, 0.3)'
   },
-  umbrella: { 
-    icon: Umbrella, 
-    color: 'text-amber-400', 
+  umbrella: {
+    icon: Umbrella,
+    color: 'text-amber-400',
     iconColor: '#FBBF24', // amber-400
-    glowColor: 'rgba(251, 191, 36, 0.3)' 
+    glowColor: 'rgba(251, 191, 36, 0.3)'
   },
-  bed: { 
-    icon: Bed, 
-    color: 'text-violet-400', 
+  bed: {
+    icon: Bed,
+    color: 'text-violet-400',
     iconColor: '#A78BFA', // violet-400
-    glowColor: 'rgba(167, 139, 250, 0.3)' 
+    glowColor: 'rgba(167, 139, 250, 0.3)'
   },
-  home: { 
-    icon: Home, 
-    color: 'text-orange-400', 
+  home: {
+    icon: Home,
+    color: 'text-orange-400',
     iconColor: '#FB923C', // orange-400
-    glowColor: 'rgba(251, 146, 60, 0.3)' 
+    glowColor: 'rgba(251, 146, 60, 0.3)'
   },
-  building: { 
-    icon: Building, 
-    color: 'text-cyan-400', 
+  building: {
+    icon: Building,
+    color: 'text-cyan-400',
     iconColor: '#22D3EE', // cyan-400
-    glowColor: 'rgba(34, 211, 238, 0.3)' 
+    glowColor: 'rgba(34, 211, 238, 0.3)'
   },
-  'map-pin': { 
-    icon: MapPin, 
-    color: 'text-rose-400', 
+  'map-pin': {
+    icon: MapPin,
+    color: 'text-rose-400',
     iconColor: '#FB7185', // rose-400
-    glowColor: 'rgba(251, 113, 133, 0.3)' 
+    glowColor: 'rgba(251, 113, 133, 0.3)'
   },
 }
 
@@ -65,16 +65,16 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isReadyToSpawn, setIsReadyToSpawn] = useState(false)
   const [hasAutoSelected, setHasAutoSelected] = useState(false)
-  const [mapIcons, setMapIcons] = useState<Array<{x: number, y: number, icon: string, label: string, iconColor: string}>>([])
+  const [mapIcons, setMapIcons] = useState<Array<{ x: number, y: number, icon: string, label: string, iconColor: string }>>([])
 
   // Icon mapping com cores vibrantes
   const getIcon = (iconName?: string, size: string = 'w-6 h-6', isSelected: boolean = false) => {
     const config = iconConfig[iconName || 'map-pin'] || iconConfig['map-pin']
     const IconComponent = config.icon
     return (
-      <IconComponent 
+      <IconComponent
         className={cn(size, config.color, 'transition-all duration-300', isSelected && 'drop-shadow-lg')}
-        style={{ 
+        style={{
           filter: isSelected ? `drop-shadow(0 0 8px ${config.glowColor})` : 'none',
           color: config.iconColor
         }}
@@ -133,7 +133,7 @@ function App() {
 
       const data = await response.json()
       console.log('[mri_Qspawn] Resposta do getSpawns:', data)
-      
+
       if (data.success && data.spawns && Array.isArray(data.spawns) && data.spawns.length > 0) {
         console.log(`[mri_Qspawn] ${data.spawns.length} spawns carregados`)
         setSpawns(data.spawns)
@@ -246,7 +246,7 @@ function App() {
     <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
       {/* Background overlay mínimo */}
       <div className="absolute inset-0 bg-black/20 pointer-events-none" />
-      
+
       {/* Conteúdo principal */}
       <div className="relative w-full h-full flex pointer-events-auto">
         {/* Título Spawn Selector - Centralizado no topo */}
@@ -282,7 +282,7 @@ function App() {
                   {getIcon(mapIcon.icon, 'w-8 h-8', true)}
                 </div>
                 {/* Nome - SEM FUNDO, apenas texto */}
-                <span 
+                <span
                   className="text-white font-semibold text-base whitespace-nowrap drop-shadow-lg"
                   style={{
                     textShadow: '2px 2px 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.8)'
@@ -298,7 +298,11 @@ function App() {
         {/* Instruções de teclado - Centralizado embaixo */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4">
           {isReadyToSpawn ? (
-            <div className="flex items-center gap-2 px-3 py-1.5 border border-emerald-500/40 rounded-lg" style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)' }}>
+            <div
+              onClick={handleConfirmSpawn}
+              className="flex items-center gap-2 px-4 py-2 border border-emerald-500/40 rounded-lg cursor-pointer hover:bg-emerald-500/30 transition-all active:scale-95"
+              style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)' }}
+            >
               <ArrowRight className="w-4 h-4 text-emerald-400" />
               <span className="text-emerald-300 font-medium text-sm">
                 Pressione <span className="text-white font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.2)' }}>ENTER</span> para spawnar
@@ -325,7 +329,7 @@ function App() {
               spawns.map((spawn, index) => {
                 const isSelected = selectedIndex === index
                 const displayLabel = spawn.label === 'last_location' ? 'Last Location' : spawn.label
-                
+
                 return (
                   <button
                     key={index}
@@ -356,7 +360,7 @@ function App() {
                     )}>
                       {getIcon(spawn.icon, 'w-5 h-5', isSelected)}
                     </div>
-                    
+
                     {/* Texto - nome e descrição */}
                     <div className="flex-1 min-w-0">
                       {/* Nome do spawn */}
@@ -367,7 +371,7 @@ function App() {
                         )}>
                           {displayLabel}
                         </p>
-                        
+
                         {/* Indicador de seleção */}
                         {isSelected && (
                           <div className="ml-auto flex-shrink-0">
@@ -375,7 +379,7 @@ function App() {
                           </div>
                         )}
                       </div>
-                      
+
                       {/* Descrição abaixo */}
                       <p className={cn(
                         "text-xs mt-0.5 leading-relaxed transition-colors duration-200",

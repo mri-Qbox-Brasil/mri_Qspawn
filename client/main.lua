@@ -237,35 +237,38 @@ local function startMarkerThread()
             -- Renderizar TODOS os spawns no mapa
             local allIcons = {}
             
-            for i = 1, #spawns do
-                local spawn = spawns[i]
-                if spawn and spawn.coords then
-                    local x, y, z = getCoordsValues(spawn.coords)
-                    if x and y and z then
-                        local markerConfig = getMarkerConfig(spawn.icon or 'map-pin')
-                        
-                        -- Converter coordenadas 3D para 2D da tela
-                        local iconOnScreen, icon_x, icon_y = World3dToScreen2d(x, y, z + 1.0)
-                        
-                        -- Só adicionar ícone se estiver na tela (iconOnScreen = true) e com coordenadas válidas
-                        -- Validar que as coordenadas estão dentro dos limites (0.0 a 1.0)
-                        if iconOnScreen and icon_x and icon_y and icon_x >= 0.0 and icon_x <= 1.0 and icon_y >= 0.0 and icon_y <= 1.0 then
-                            local xPos = math.max(0.0, math.min(1.0, icon_x))
-                            local yPos = math.max(0.0, math.min(1.0, icon_y))
+            -- Se a câmera estiver animando, não mostrar ícones (evitar jitter)
+            if not isCameraAnimating then
+                for i = 1, #spawns do
+                    local spawn = spawns[i]
+                    if spawn and spawn.coords then
+                        local x, y, z = getCoordsValues(spawn.coords)
+                        if x and y and z then
+                            local markerConfig = getMarkerConfig(spawn.icon or 'map-pin')
                             
-                            -- Armazenar última posição válida para este índice
-                            lastValidIconPositions[i] = { x = xPos, y = yPos }
+                            -- Converter coordenadas 3D para 2D da tela
+                            local iconOnScreen, icon_x, icon_y = World3dToScreen2d(x, y, z + 1.0)
                             
-                            -- Adicionar ícone ao array apenas se estiver visível na tela
-                            allIcons[#allIcons + 1] = {
-                                x = xPos,
-                                y = yPos,
-                                icon = spawn.icon or 'map-pin',
-                                label = spawn.label == 'last_location' and 'Last Location' or (spawn.label or 'Location'),
-                                iconColor = markerConfig.r .. ',' .. markerConfig.g .. ',' .. markerConfig.b
-                            }
+                            -- Só adicionar ícone se estiver na tela (iconOnScreen = true) e com coordenadas válidas
+                            -- Validar que as coordenadas estão dentro dos limites (0.0 a 1.0)
+                            if iconOnScreen and icon_x and icon_y and icon_x >= 0.0 and icon_x <= 1.0 and icon_y >= 0.0 and icon_y <= 1.0 then
+                                local xPos = math.max(0.0, math.min(1.0, icon_x))
+                                local yPos = math.max(0.0, math.min(1.0, icon_y))
+                                
+                                -- Armazenar última posição válida para este índice
+                                lastValidIconPositions[i] = { x = xPos, y = yPos }
+                                
+                                -- Adicionar ícone ao array apenas se estiver visível na tela
+                                allIcons[#allIcons + 1] = {
+                                    x = xPos,
+                                    y = yPos,
+                                    icon = spawn.icon or 'map-pin',
+                                    label = spawn.label == 'last_location' and 'Last Location' or (spawn.label or 'Location'),
+                                    iconColor = markerConfig.r .. ',' .. markerConfig.g .. ',' .. markerConfig.b
+                                }
+                            end
+                            -- Se não está na tela, não adicionar ao array (não usar posição padrão para evitar aparecer no canto)
                         end
-                        -- Se não está na tela, não adicionar ao array (não usar posição padrão para evitar aparecer no canto)
                     end
                 end
             end
