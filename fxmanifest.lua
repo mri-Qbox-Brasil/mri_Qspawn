@@ -22,11 +22,11 @@ server_scripts {
 	'server/main.lua',
 }
 
-ui_page 'html/dist/index.html'
+ui_page 'web/dist/index.html'
 
 files {
-	'html/index.html',
-	'html/dist/**/*',
+	'web/dist/index.html',
+	'web/dist/**/*',
 	'config/client.lua',
 	'locales/*.json'
 }

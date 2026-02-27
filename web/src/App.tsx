@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Shield, Leaf, Umbrella, Bed, Home, MapPin, Building, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { cn } from './lib/utils'
 
-declare function GetParentResourceName(): string
+import { fetchNui, isEnvBrowser, debugMessage } from './utils/misc'
+
+// declare function GetParentResourceName(): string (No longer needed with fetchNui)
 
 interface SpawnLocation {
   label: string
@@ -87,15 +89,7 @@ function App() {
     if (!isReadyToSpawn) return
 
     try {
-      const response = await fetch(`https://${GetParentResourceName()}/confirmSpawn`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      })
-
-      const data = await response.json()
+      const data = await fetchNui('confirmSpawn')
       if (data.success) {
         setIsReadyToSpawn(false)
         setIsOpen(false)
@@ -103,17 +97,11 @@ function App() {
     } catch (error) {
       console.error('Erro ao confirmar spawn:', error)
     }
-  }, [isReadyToSpawn])
+  }, [isReadyToSpawn, setIsReadyToSpawn, setIsOpen])
 
   const handleClose = useCallback(async () => {
     try {
-      await fetch(`https://${GetParentResourceName()}/close`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ returnToMultichar: true }),
-      })
+      await fetchNui('close', { returnToMultichar: true })
       setIsOpen(false)
       setIsReadyToSpawn(false)
       setSelectedIndex(0)
@@ -124,15 +112,7 @@ function App() {
 
   const loadSpawns = useCallback(async () => {
     try {
-      const response = await fetch(`https://${GetParentResourceName()}/getSpawns`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      })
-
-      const data = await response.json()
+      const data = await fetchNui('getSpawns')
       console.log('[mri_Qspawn] Resposta do getSpawns:', data)
 
       if (data.success && data.spawns && Array.isArray(data.spawns) && data.spawns.length > 0) {
@@ -141,7 +121,6 @@ function App() {
         setSelectedIndex(0)
       } else {
         console.error('[mri_Qspawn] Nenhum spawn encontrado. Resposta:', JSON.stringify(data, null, 2))
-        console.error('[mri_Qspawn] success:', data.success, 'spawns:', data.spawns, 'length:', data.spawns?.length)
       }
     } catch (error) {
       console.error('[mri_Qspawn] Erro ao carregar spawns:', error)
@@ -183,6 +162,11 @@ function App() {
     }
 
     window.addEventListener('message', handleMessage)
+
+    // Devmode: Auto-open if in browser
+    if (isEnvBrowser() && !isOpen) {
+      debugMessage('open')
+    }
 
     return () => {
       window.removeEventListener('message', handleMessage)
@@ -227,15 +211,7 @@ function App() {
 
     setSelectedIndex(index)
     try {
-      const response = await fetch(`https://${GetParentResourceName()}/selectSpawn`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ index: index }), // Enviar índice 0-based, será convertido no Lua
-      })
-
-      const data = await response.json()
+      const data = await fetchNui('selectSpawn', { index: index })
       if (data.success) {
         setIsReadyToSpawn(true)
       }
