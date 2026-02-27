@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Shield, Leaf, Umbrella, Bed, Home, MapPin, Building, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { cn } from './lib/utils'
+import {
+  MriButton,
+  MriCard,
+  MriBadge,
+} from '@mriqbox/ui-kit'
 
-import { fetchNui, isEnvBrowser, debugMessage } from './utils/misc'
+import { fetchNui } from './utils/misc'
 
-// declare function GetParentResourceName(): string (No longer needed with fetchNui)
+console.log('[mri_Qspawn:DEBUG] JS Bundle carregado (Top Level)')
 
 interface SpawnLocation {
   label: string
@@ -62,6 +67,7 @@ const iconConfig: Record<string, { icon: any; color: string; iconColor: string; 
 }
 
 function App() {
+  console.log('[mri_Qspawn:DEBUG] Componente App inicializando')
   const [isOpen, setIsOpen] = useState(false)
   const [spawns, setSpawns] = useState<SpawnLocation[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -130,21 +136,21 @@ function App() {
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const data = event.data
-      console.log('[mri_Qspawn] Mensagem recebida:', data)
+      console.log(`[mri_Qspawn:NUI] Mensagem recebida: ${data?.action}`, JSON.stringify(data));
 
       if (data && data.action === 'open') {
-        console.log('[mri_Qspawn] Ação: open. Spawns recebidos:', data.spawns)
+        console.log('[mri_Qspawn:NUI] Abrindo Painel de Spawn...');
         setIsOpen(true)
         setHasAutoSelected(false)
         if (data.title) {
           setTitle(data.title)
         }
         if (data.spawns && Array.isArray(data.spawns) && data.spawns.length > 0) {
-          console.log(`[mri_Qspawn] ${data.spawns.length} spawns recebidos via mensagem`)
+          console.log(`[mri_Qspawn:NUI] ${data.spawns.length} spawns recebidos na abertura`);
           setSpawns(data.spawns)
           setSelectedIndex(0)
         } else {
-          console.log('[mri_Qspawn] Nenhum spawn na mensagem, tentando carregar via callback')
+          console.log('[mri_Qspawn:NUI] Spawns vazios no "open", buscando via callback...');
           loadSpawns()
         }
       } else if (data && data.action === 'close') {
@@ -155,7 +161,7 @@ function App() {
         setMapIcons([])
       } else if (data && data.action === 'updateMapIcon') {
         if (data.allIcons && Array.isArray(data.allIcons)) {
-          // Atualizar todos os ícones de uma vez
+          console.log(`[mri_Qspawn:NUI] Atualizando ${data.allIcons.length} ícones`);
           setMapIcons(data.allIcons)
         }
       }
@@ -163,15 +169,22 @@ function App() {
 
     window.addEventListener('message', handleMessage)
 
-    // Devmode: Auto-open if in browser
-    if (isEnvBrowser() && !isOpen) {
-      debugMessage('open')
-    }
-
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [isOpen, loadSpawns])
+  }, [loadSpawns])
+
+  // Sinalizar pronto separadamente com delay para garantir estabilidade da ponte NUI
+  useEffect(() => {
+    console.log('[mri_Qspawn:NUI] JS Montado. Aguardando 1s para enviar nuiReady...');
+    const timer = setTimeout(() => {
+      console.log('[mri_Qspawn:NUI] Enviando sinal de pronto (nuiReady) agora...');
+      fetchNui('nuiReady', {}).catch(err => {
+          console.error('[mri_Qspawn:NUI] Falha ao enviar nuiReady:', err);
+      });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Selecionar automaticamente o last_location quando spawns são carregados e UI está aberta
   useEffect(() => {
@@ -230,10 +243,15 @@ function App() {
       {/* Conteúdo principal */}
       <div className="relative w-full h-full flex pointer-events-auto">
         {/* Título Spawn Selector - Centralizado no topo */}
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10">
-          <div className="flex items-center gap-2 text-white text-lg font-semibold">
-            <MapPin className="w-5 h-5" />
-            <span>{title}</span>
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-10">
+          <div className="flex flex-col items-center gap-2">
+            <div className="bg-black/60 border border-primary/20 p-3 rounded-full mb-2">
+              <MapPin className="w-8 h-8 text-primary drop-shadow-[0_0_10px_rgba(160,255,115,0.5)]" />
+            </div>
+            <h1 className="text-4xl font-black tracking-tighter text-white drop-shadow-2xl italic uppercase">
+              {title}
+            </h1>
+            <div className="h-1 w-24 bg-primary" />
           </div>
         </div>
 
@@ -276,108 +294,101 @@ function App() {
         ))}
 
         {/* Instruções de teclado - Centralizado embaixo */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4">
-          {isReadyToSpawn ? (
-            <div
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-10 flex items-center gap-6">
+          {isReadyToSpawn && (
+            <MriButton
               onClick={handleConfirmSpawn}
-              className="flex items-center gap-2 px-4 py-2 border border-emerald-500/40 rounded-lg cursor-pointer hover:bg-emerald-500/30 transition-all active:scale-95"
-              style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)' }}
+              variant="default"
+              size="lg"
+              className="px-8 py-6 text-lg font-bold uppercase italic group shadow-[0_0_20px_rgba(160,255,115,0.3)] hover:shadow-[0_0_30px_rgba(160,255,115,0.5)] transition-all duration-300"
             >
-              <ArrowRight className="w-4 h-4 text-emerald-400" />
-              <span className="text-emerald-300 font-medium text-sm">
-                Pressione <span className="text-white font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.2)' }}>ENTER</span> para spawnar
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-1.5 border border-white/20 rounded-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}>
-              <span className="text-white/70 font-medium text-sm">
-                Pressione <span className="text-white font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.2)' }}>E</span> para selecionar
-              </span>
-            </div>
+              <div className="flex items-center gap-3">
+                <ArrowRight className="w-6 h-6 animate-pulse" />
+                <span>Confirmar Spawn</span>
+                <MriBadge variant="secondary" className="ml-2 bg-black/20 text-white border-none text-[10px]">ENTER</MriBadge>
+              </div>
+            </MriButton>
           )}
-          <div className="flex items-center gap-2 px-3 py-1.5 border border-white/20 rounded-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}>
-            <span className="text-white/70 font-medium text-sm">
-              Pressione <span className="text-white font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.2)' }}>ESC</span> para voltar
-            </span>
-          </div>
         </div>
 
-        {/* Lista de spawns à direita - SEM FUNDO, estilo minimalista como GTA V */}
-        <div className="absolute top-1/2 right-8 -translate-y-1/2 z-10 w-[420px] pointer-events-auto">
-          <div className="space-y-2 max-h-[75vh] overflow-y-auto pr-3 custom-scrollbar">
-            {spawns.length > 0 ? (
-              spawns.map((spawn, index) => {
-                const isSelected = selectedIndex === index
-                const displayLabel = spawn.label
+        {/* Lista de spawns à direita - Estilo Premium MRI */}
+        <div className="absolute top-1/2 right-12 -translate-y-1/2 z-10 w-[450px] pointer-events-auto">
+          <MriCard className="bg-black/90 border-white/10 shadow-2xl overflow-hidden rounded-3xl">
+            <div className="p-6 border-b border-white/5 bg-gradient-to-br from-white/5 to-transparent">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-primary tracking-[0.2em] uppercase italic">Destinos Disponíveis</span>
+                <MriBadge variant="default" className="bg-primary/20 text-primary border-primary/30 text-[10px]">{spawns.length}</MriBadge>
+              </div>
+              <p className="text-white/40 text-[10px] uppercase tracking-widest font-medium">Selecione seu local de início</p>
+            </div>
 
-                return (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      handleSelectSpawn(index)
-                    }}
-                    className="w-full flex items-start gap-3 py-3 px-2 rounded-lg transition-all duration-200 text-left cursor-pointer group relative spawn-item"
-                    style={{
-                      backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.05)' : 'transparent'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        setSelectedIndex(index)
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)'
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.backgroundColor = 'transparent'
-                      }
-                    }}
-                  >
+            <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto custom-scrollbar">
+              {spawns.length > 0 ? (
+                spawns.map((spawn, index) => {
+                  const isSelected = selectedIndex === index
+                  const displayLabel = spawn.label
 
-                    {/* Ícone colorido antes do nome */}
-                    <div className={cn(
-                      "flex-shrink-0 mt-0.5 transition-all duration-200",
-                      isSelected ? "scale-110" : "scale-100"
-                    )}>
-                      {getIcon(spawn.icon, 'w-5 h-5', isSelected)}
-                    </div>
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => handleSelectSpawn(index)}
+                      className={cn(
+                        "w-full flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 text-left relative group overflow-hidden border",
+                        isSelected
+                          ? "bg-primary/10 border-primary/40 shadow-[0_0_20px_rgba(160,255,115,0.15)]"
+                          : "bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-white/10"
+                      )}
+                    >
+                      {/* Efeito de brilho lateral quando selecionado */}
+                      {isSelected && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary shadow-[0_0_10px_rgba(160,255,115,0.8)]" />
+                      )}
 
-                    {/* Texto - nome e descrição */}
-                    <div className="flex-1 min-w-0">
-                      {/* Nome do spawn */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className={cn(
-                          "font-semibold text-lg leading-tight transition-all duration-200",
-                          isSelected ? "text-white" : "text-white/80 group-hover:text-white/90"
-                        )}>
-                          {displayLabel}
-                        </p>
-
-                        {/* Indicador de seleção */}
-                        {isSelected && (
-                          <div className="ml-auto flex-shrink-0">
-                            <CheckCircle2 className="w-4 h-4 text-white/70" />
-                          </div>
-                        )}
+                      {/* Ícone */}
+                      <div className={cn(
+                        "flex-shrink-0 p-3 rounded-xl transition-all duration-300",
+                        isSelected ? "bg-primary text-black scale-110" : "bg-white/5 text-white/40"
+                      )}>
+                        {getIcon(spawn.icon, 'w-6 h-6', isSelected)}
                       </div>
 
-                      {/* Descrição abaixo */}
-                      <p className={cn(
-                        "text-xs mt-0.5 leading-relaxed transition-colors duration-200",
-                        isSelected ? "text-white/70" : "text-white/50 group-hover:text-white/60"
-                      )}>
-                        {spawn.description || `Start at ${displayLabel.toLowerCase()}`}
-                      </p>
-                    </div>
-                  </button>
-                )
-              })
-            ) : (
-              <div className="text-center text-white/60 py-12">
-                <div className="animate-spin w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full mx-auto mb-3" />
-                <p className="text-sm">Carregando locais...</p>
-              </div>
-            )}
-          </div>
+                      {/* Conteúdo */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <h3 className={cn(
+                            "font-black text-lg tracking-tight transition-colors duration-300 uppercase italic",
+                            isSelected ? "text-white" : "text-white/60 group-hover:text-white/80"
+                          )}>
+                            {displayLabel}
+                          </h3>
+                        </div>
+                        <p className={cn(
+                          "text-[11px] leading-tight transition-colors duration-300 font-medium uppercase tracking-wide",
+                          isSelected ? "text-primary/80" : "text-white/30"
+                        )}>
+                          {spawn.description || `Ponto de início em ${displayLabel}`}
+                        </p>
+                      </div>
+
+                      {/* Indicador de Selecionado */}
+                      {isSelected && (
+                        <div className="flex-shrink-0">
+                          <div className="bg-primary/20 p-1.5 rounded-full border border-primary/30">
+                            <CheckCircle2 className="w-4 h-4 text-primary" />
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })
+              ) : (
+                <div className="text-center py-20">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mb-4" />
+                  <p className="text-white/40 text-xs font-bold uppercase tracking-widest">Carregando locais...</p>
+                </div>
+              )}
+            </div>
+          </MriCard>
         </div>
 
 

@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mriqbox/ui-kit": "^3.3.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "lucide-react": "^0.294.0",
@@ -27,4 +28,3 @@
     "vite": "^7.3.0"
   }
 }
-

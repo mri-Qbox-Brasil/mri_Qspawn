@@ -26,6 +26,7 @@ local selectedSpawnIndex = nil -- Índice do spawn selecionado para o mapa
 local previousSelectedSpawn = nil -- Armazenar o spawn anterior (para usar como ponto de partida da animação)
 local previousSelectedSpawnIndex = nil -- Índice do spawn anterior
 local initialCameraPosition = nil -- Armazenar a posição inicial da câmera (last_location)
+local hasJsSignaledReady = false
 
 -- Controle de animações da câmera
 local cameraAnimationThread = nil
@@ -35,9 +36,9 @@ local cameraDriftThread = nil -- Thread para micro-movimentos (drift)
 -- Função para extrair coordenadas de diferentes formatos (declarada antes para ser usada em setupAerialMap)
 local function getCoordsValues(coords)
     if not coords then return nil, nil, nil, nil end
-    
+
     local x, y, z, w
-    
+
     -- Formato com propriedades nomeadas
     if coords.x and coords.y and coords.z then
         x = tonumber(coords.x) or coords.x
@@ -46,7 +47,7 @@ local function getCoordsValues(coords)
         w = coords.w and (tonumber(coords.w) or coords.w) or nil
         return x, y, z, w
     end
-    
+
     -- Formato com índices numéricos
     if coords[1] and coords[2] and coords[3] then
         x = tonumber(coords[1]) or coords[1]
@@ -55,7 +56,7 @@ local function getCoordsValues(coords)
         w = coords[4] and (tonumber(coords[4]) or coords[4]) or nil
         return x, y, z, w
     end
-    
+
     return nil, nil, nil, nil
 end
 
@@ -91,37 +92,37 @@ end
 -- Função para iniciar micro-movimentos (drift) da câmera após enquadramento
 local function startCameraDrift()
     stopCameraDrift() -- Parar qualquer drift anterior
-    
+
     if not previewCam or not DoesCamExist(previewCam) then
         return
     end
-    
+
     local driftIntensity = config.cameraDriftIntensity or 0.15
     if driftIntensity <= 0.0 then
         return -- Drift desabilitado
     end
-    
+
     cameraDriftThread = CreateThread(function()
         local timer = 0.0
-        
+
         -- Valores para movimento suave (variação sutil)
         -- IMPORTANTE: Não incluir yaw - o mapa deve sempre ficar "em pé", sem rotação
         local timeOffsetX = math.random() * 100.0
         local timeOffsetY = math.random() * 100.0
-        
+
         while cameraDriftThread and DoesCamExist(previewCam) and isNuiOpen do
             timer = timer + GetFrameTime()
-            
+
             if not isCameraAnimating then
                 -- Movimento senoidal suave (quase imperceptível) - apenas X, Y e Z
                 -- SEM rotação (yaw sempre fixo em 0.0)
                 local offsetX = math.sin(timer * 0.3 + timeOffsetX) * driftIntensity * 0.5
                 local offsetY = math.cos(timer * 0.25 + timeOffsetY) * driftIntensity * 0.5
                 local offsetZ = math.sin(timer * 0.2) * driftIntensity * 0.3
-                
+
                 -- Obter posição atual
                 local currentX, currentY, currentZ = GetCamCoord(previewCam)
-                
+
                 if currentX and currentY and currentZ then
                     -- Aplicar micro-movimentos apenas na posição (X, Y, Z)
                     SetCamCoord(previewCam, currentX + offsetX, currentY + offsetY, currentZ + offsetZ)
@@ -129,7 +130,7 @@ local function startCameraDrift()
                     SetCamRot(previewCam, -90.0, 0.0, 0.0, 2)
                 end
             end
-            
+
             Wait(0)
         end
     end)
@@ -140,7 +141,7 @@ local function setupAerialCamera(initialCoords)
     local startX, startY, groundZ
     local previewPitch = -90.0  -- Sempre visão satélite (olhando diretamente para baixo)
     local previewFov = config.previewFov or 60.0
-    
+
     -- Se coordenadas iniciais foram fornecidas, usar elas (normalmente last location)
     if initialCoords then
         local x, y, z = getCoordsValues(initialCoords)
@@ -150,7 +151,7 @@ local function setupAerialCamera(initialCoords)
             print(string.format('[mri_Qspawn] Câmera inicializando na last location: %.2f, %.2f, %.2f (chão: %.2f)', x, y, z, groundZ))
         end
     end
-    
+
     -- Se não conseguiu obter coordenadas iniciais, procurar last_location nos spawns
     if not startX or not startY then
         for i = 1, #spawns do
@@ -165,21 +166,21 @@ local function setupAerialCamera(initialCoords)
             end
         end
     end
-    
+
     -- Fallback: centro da cidade se não encontrou last location
     if not startX or not startY then
         startX, startY = -600.0, -50.0  -- Centro aproximado do mapa de Los Santos
         groundZ = getGroundZAtPoint(startX, startY, 30.0)
         print(string.format('[mri_Qspawn] Câmera inicializando no centro da cidade (fallback) - chão: %.2f', groundZ))
     end
-    
+
     local startZ = calculatePreviewHeight(startX, startY, groundZ)
-    
+
     -- IMPORTANTE: Armazenar a posição inicial da câmera (onde ela foi inicializada na last_location)
     -- Esta será sempre usada como ponto de partida quando não há spawn anterior selecionado
     initialCameraPosition = { x = startX, y = startY, z = startZ }
     print(string.format('[mri_Qspawn] Posição inicial da câmera armazenada: (%.2f, %.2f, %.2f)', startX, startY, startZ))
-    
+
     previewCam = CreateCamWithParams(
         'DEFAULT_SCRIPTED_CAMERA',
         startX, startY, startZ,
@@ -188,10 +189,10 @@ local function setupAerialCamera(initialCoords)
         false,
         2
     )
-    
+
     SetCamActive(previewCam, true)
     RenderScriptCams(true, true, 1000, true, true)
-    
+
     -- Iniciar micro-movimentos (drift) da câmera
     startCameraDrift()
 end
@@ -209,14 +210,14 @@ end
 local function stopCamera()
     cancelCameraAnimation()
     stopCameraDrift()
-    
+
     if previewCam and DoesCamExist(previewCam) then
         SetCamActive(previewCam, false)
         RenderScriptCams(false, true, 1000, true, true)
         DestroyCam(previewCam, true)
         previewCam = nil
     end
-    
+
     if scaleform then
         BeginScaleformMovieMethod(scaleform, 'CLEANUP')
         EndScaleformMovieMethod()
@@ -248,12 +249,12 @@ local lastValidIconPositions = {} -- Armazenar últimas posições válidas por 
 
 local function startMarkerThread()
     if markerThread then return end -- Já está rodando
-    
+
     markerThread = CreateThread(function()
         while isNuiOpen do
             -- Renderizar TODOS os spawns no mapa
             local allIcons = {}
-            
+
             -- Se a câmera estiver animando, não mostrar ícones (evitar jitter)
             if not isCameraAnimating then
                 for i = 1, #spawns do
@@ -262,19 +263,19 @@ local function startMarkerThread()
                         local x, y, z = getCoordsValues(spawn.coords)
                         if x and y and z then
                             local markerConfig = getMarkerConfig(spawn.icon or 'map-pin')
-                            
+
                             -- Converter coordenadas 3D para 2D da tela
                             local iconOnScreen, icon_x, icon_y = World3dToScreen2d(x, y, z + 1.0)
-                            
+
                             -- Só adicionar ícone se estiver na tela (iconOnScreen = true) e com coordenadas válidas
                             -- Validar que as coordenadas estão dentro dos limites (0.0 a 1.0)
                             if iconOnScreen and icon_x and icon_y and icon_x >= 0.0 and icon_x <= 1.0 and icon_y >= 0.0 and icon_y <= 1.0 then
                                 local xPos = math.max(0.0, math.min(1.0, icon_x))
                                 local yPos = math.max(0.0, math.min(1.0, icon_y))
-                                
+
                                 -- Armazenar última posição válida para este índice
                                 lastValidIconPositions[i] = { x = xPos, y = yPos }
-                                
+
                                 -- Adicionar ícone ao array apenas se estiver visível na tela
                                 allIcons[#allIcons + 1] = {
                                     x = xPos,
@@ -289,13 +290,13 @@ local function startMarkerThread()
                     end
                 end
             end
-            
+
             -- Enviar todos os ícones de uma vez para React
             SendNUIMessage({
                 action = 'updateMapIcon',
                 allIcons = allIcons
             })
-            
+
             Wait(0) -- Verificar a cada frame para posição precisa
         end
         markerThread = nil
@@ -330,7 +331,7 @@ local function setupAerialMap()
             HideHudComponentThisFrame(6) -- Vehicle Name
             HideHudComponentThisFrame(7) -- Area Name
             HideHudComponentThisFrame(9) -- Vehicle Class
-                
+
                 Wait(0)
             end
         end)
@@ -343,7 +344,7 @@ local function managePlayer()
     FreezeEntityPosition(cache.ped, true)
     SetEntityInvincible(cache.ped, true)
     SetEntityVisible(cache.ped, false, false)
-    
+
     SetTimeout(500, function()
         DoScreenFadeIn(5000)
     end)
@@ -351,14 +352,14 @@ end
 
 -- Função para converter coords para formato JSON
 local function serializeCoords(coords)
-    if not coords then 
+    if not coords then
         print('[mri_Qspawn] serializeCoords: coords é nil')
-        return nil 
+        return nil
     end
-    
+
     local result = {}
     local x, y, z, w
-    
+
     -- Tentar extrair x, y, z, w de diferentes formatos
     -- vec4/vector4 normalmente tem propriedades .x, .y, .z, .w
     local success1, val = pcall(function() return coords.x end)
@@ -370,7 +371,7 @@ local function serializeCoords(coords)
             local success3, val3 = pcall(function() return coords.z end)
             if success3 and val3 ~= nil then
                 z = tonumber(val3)
-                
+
                 -- Tentar obter w/heading
                 local success4, val4 = pcall(function() return coords.w end)
                 if success4 and val4 ~= nil then
@@ -381,7 +382,7 @@ local function serializeCoords(coords)
                         w = tonumber(val5)
                     end
                 end
-                
+
                 if x and y and z then
                     result.x = x
                     result.y = y
@@ -392,7 +393,7 @@ local function serializeCoords(coords)
             end
         end
     end
-    
+
     -- Formato com índices numéricos [1], [2], [3], [4]
     local success_idx, val1 = pcall(function() return coords[1] end)
     if success_idx and val1 ~= nil then
@@ -407,7 +408,7 @@ local function serializeCoords(coords)
                 if success4_idx and val4 ~= nil then
                     w = tonumber(val4)
                 end
-                
+
                 if x and y and z then
                     result.x = x
                     result.y = y
@@ -418,7 +419,7 @@ local function serializeCoords(coords)
             end
         end
     end
-    
+
     -- Última tentativa: verificar se é uma string que precisa ser parseada
     if type(coords) == 'string' then
         local success, parsed = pcall(function() return json.decode(coords) end)
@@ -426,7 +427,7 @@ local function serializeCoords(coords)
             return serializeCoords(parsed) -- Recursivamente tentar novamente
         end
     end
-    
+
     print('[mri_Qspawn] serializeCoords: Não foi possível extrair coordenadas. Tipo:', type(coords))
     if type(coords) == 'table' then
         print('[mri_Qspawn] Tabela keys:', json.encode(coords))
@@ -440,7 +441,7 @@ local function serializeSpawns(spawnsToSerialize)
         print('[mri_Qspawn] Nenhum spawn para serializar')
         return {}
     end
-    
+
     local serialized = {}
     for i = 1, #spawnsToSerialize do
         local spawn = spawnsToSerialize[i]
@@ -448,13 +449,13 @@ local function serializeSpawns(spawnsToSerialize)
             print(string.format('[mri_Qspawn] Spawn %d é nil', i))
             goto continue
         end
-        
+
         local serializedCoords = serializeCoords(spawn.coords)
         if not serializedCoords then
             print(string.format('[mri_Qspawn] Spawn %d (%s) não tem coordenadas válidas', i, spawn.label or 'sem label'))
             goto continue
         end
-        
+
         local serializedSpawn = {
             label = getTranslatedLabel(spawn.label),
             coords = serializedCoords,
@@ -465,28 +466,28 @@ local function serializeSpawns(spawnsToSerialize)
             key = spawn.key
         }
         serialized[#serialized + 1] = serializedSpawn
-        
+
         ::continue::
     end
-    
+
     print(string.format('[mri_Qspawn] Serializados %d spawns de %d totais', #serialized, #spawnsToSerialize))
     return serialized
 end
 
 -- Função para abrir a NUI
 local function openSpawnUI()
-    if isNuiOpen then 
+    if isNuiOpen then
         print('[mri_Qspawn] AVISO: Tentativa de abrir UI quando já está aberta!')
-        return 
+        return
     end
-    
+
     print(string.format('[mri_Qspawn] Abrindo UI com %d spawns disponíveis', #spawns))
-    
+
     if #spawns == 0 then
         print('[mri_Qspawn] ERRO: Nenhum spawn disponível!')
         return
     end
-    
+
     -- Procurar last_location para usar como posição inicial da câmera
     local initialCoords = nil
     for i = 1, #spawns do
@@ -496,84 +497,69 @@ local function openSpawnUI()
             break
         end
     end
-    
+
     -- Se não encontrou last_location, usar o primeiro spawn como fallback
     if not initialCoords and #spawns > 0 and spawns[1] and spawns[1].coords then
         initialCoords = spawns[1].coords
-        print('[mri_Qspawn] Usando primeiro spawn como posição inicial da câmera')
+        print('[mri_Qspawn:LUA] Usando primeiro spawn como posição inicial da câmera')
     end
-    
-    -- Verificar se há coordenadas iniciais válidas
-    if not initialCoords then
-        print('[mri_Qspawn] ERRO: Não foi possível determinar coordenadas iniciais para a câmera!')
-        return
-    end
-    
-    -- Garantir que NUI focus anterior foi fechado (do multichar)
-    SetNuiFocus(false, false)
-    Wait(100) -- Pequeno delay para garantir que o foco anterior foi liberado
-    
-    -- Marcar UI como aberta ANTES de configurar câmera (para evitar loops)
+
+    print('[mri_Qspawn:LUA] Abrindo UI. isNuiOpen = true')
     isNuiOpen = true
-    
+    hasJsSignaledReady = false -- Resetar para cada nova abertura
+
     -- Gerenciar player (esconder, congelar, etc)
     managePlayer()
-    
-    -- Configurar câmera aérea com coordenadas iniciais
-    print('[mri_Qspawn] Configurando câmera aérea...')
+
     setupAerialCamera(initialCoords)
-    
-    -- Configurar mapa aéreo
-    print('[mri_Qspawn] Configurando mapa aéreo...')
     setupAerialMap()
-    
-    -- Aguardar um pouco para garantir que a câmera e o mapa estão prontos
+
     Wait(400)
-    
-    -- Definir foco na NUI
+
     SetNuiFocus(true, true)
-    print('[mri_Qspawn] Foco da NUI ativado')
-    
-    -- Serializar spawns antes de enviar
+    print('[mri_Qspawn:LUA] Foco da NUI ativado. Aguardando sinal de "ready" do JS...')
+
+    -- Fallback: Se o JS não responder em 4s, forçar a abertura
+    CreateThread(function()
+        local timeout = 4000
+        local start = GetGameTimer()
+        while isNuiOpen and not hasJsSignaledReady do
+            if GetGameTimer() - start > timeout then
+                print('[mri_Qspawn:LUA] AVISO: JS demorou demais ou não carregou (F8 console pode ter erros). Forçando abertura via fallback...')
+                sendOpenMessage()
+                break
+            end
+            Wait(100)
+        end
+    end)
+end
+
+-- Helper para enviar a mensagem de abertura de forma segura
+function sendOpenMessage()
+    if not isNuiOpen or hasJsSignaledReady then return end
+    hasJsSignaledReady = true
+
     local serializedSpawns = serializeSpawns(spawns)
-    
-    print(string.format('[mri_Qspawn] Enviando %d spawns serializados para a NUI', #serializedSpawns))
-    
-    if #serializedSpawns == 0 then
-        print('[mri_Qspawn] ERRO: Nenhum spawn serializado para enviar!')
-        closeSpawnUI()
-        return
-    end
-    
-    -- Enviar mensagem para a NUI
+    print(string.format('[mri_Qspawn:LUA] Enviando %d spawns para a NUI', #serializedSpawns))
+
     SendNUIMessage({
         action = 'open',
         spawns = serializedSpawns,
         title = config.Title or 'SPAWN SELECTOR',
     })
-    
-    -- Selecionar automaticamente o primeiro spawn (last_location)
-    if #spawns > 0 and spawns[1] then
+
+    -- Selecionar o primeiro
+    if #spawns > 0 then
         selectedSpawn = spawns[1]
         selectedSpawnIndex = 1
-        print(string.format('[mri_Qspawn] Selecionando automaticamente: %s (índice 1)', spawns[1].label or 'last_location'))
-        -- Iniciar thread para renderizar todos os ícones no mapa
-        CreateThread(function()
-            Wait(300) -- Delay mínimo apenas para garantir que a câmera está ativa
-            if isNuiOpen then
-                -- Iniciar thread que renderiza TODOS os spawns no mapa
-                startMarkerThread()
-            end
-        end)
+        startMarkerThread()
     end
-    
-    print('[mri_Qspawn] UI aberta com sucesso!')
 end
 
 -- Função para fechar a NUI
 local function closeSpawnUI()
     if not isNuiOpen then return end
-    
+
     isNuiOpen = false
     selectedSpawn = nil
     selectedSpawnIndex = nil
@@ -582,7 +568,7 @@ local function closeSpawnUI()
     stopMarkerThread()
     SetNuiFocus(false, false)
     stopCamera()
-    
+
     SendNUIMessage({
         action = 'close',
     })
@@ -595,20 +581,20 @@ local function moveCameraToLocation(coords, duration)
         print('[mri_Qspawn] ERRO: Câmera não existe para moveCameraToLocation')
         return
     end
-    
+
     local endX, endY, endZ = getCoordsValues(coords)
     if not endX or not endY or not endZ then
         print('[mri_Qspawn] ERRO: Coordenadas inválidas para moveCameraToLocation')
         return
     end
-    
+
     -- Parar animação anterior suavemente (sem resetar a câmera)
     cancelCameraAnimation()
     stopCameraDrift()
-    
+
     -- Aguardar um pouco para a thread anterior parar completamente (menos delay para transição mais rápida)
     Wait(50)
-    
+
     -- IMPORTANTE: Usar a posição ATUAL da câmera como ponto de partida para transições suaves
     -- Isso evita resets ou "pulos" visuais
     local camX, camY, camZ = GetCamCoord(previewCam)
@@ -616,7 +602,7 @@ local function moveCameraToLocation(coords, duration)
     local camPitch = camRot.x or -90.0
     local camRoll = camRot.y or 0.0
     local camYaw = camRot.z or 0.0
-    
+
     -- Verificar se a posição da câmera é válida
     if not camX or not camY or not camZ or camX == 0.0 then
         -- Se a câmera não tem posição válida, usar spawn anterior ou last_location
@@ -631,7 +617,7 @@ local function moveCameraToLocation(coords, duration)
                 camYaw = 0.0
             end
         end
-        
+
         -- Se ainda não temos coordenadas válidas, usar last_location
         if not camX or camX == 0.0 then
             for i = 1, #spawns do
@@ -662,50 +648,50 @@ local function moveCameraToLocation(coords, duration)
         camRoll = camRoll or 0.0
         camYaw = camYaw or 0.0
     end
-    
+
     -- Log para debug
     print(string.format('[mri_Qspawn] Posição inicial da câmera: (%.2f, %.2f, %.2f)', camX, camY, camZ))
-    
+
     -- Calcular altura final baseada no chão do destino
     local groundZEnd = getGroundZAtPoint(endX, endY, endZ)
     local endHeight = calculatePreviewHeight(endX, endY, groundZEnd)
-    
+
     -- Configurações de movimento horizontal (pan) - SEMPRE fazer animação tipo drone (MAXIMAMENTE SUAVE)
     local panSpeed = config.transitionPanSpeed or 0.25 -- metros por ms (extremamente lento para movimento muito suave)
     local panDurationBase = config.transitionPanDurationBase or 7000 -- mínimo 7000ms (movimento extremamente suave e lento tipo drone - 7 segundos)
-    
+
     -- SEMPRE usar duração fixa para movimento tipo drone (independente de distância)
     -- Esta duração garante movimento muito suave, lento e visível sempre (sem cortes ou resets)
     local panDuration = panDurationBase
-    
+
     local previewFov = config.previewFov or 60.0
-    
-    print(string.format('[mri_Qspawn] Movimento tipo drone: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f) duração: %dms', 
+
+    print(string.format('[mri_Qspawn] Movimento tipo drone: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f) duração: %dms',
         camX, camY, camZ, endX, endY, endHeight, math.floor(panDuration)))
-    
+
     isCameraAnimating = true
-    
+
     cameraAnimationThread = CreateThread(function()
         local totalStartTime = GetGameTimer()
-        
+
         -- Aguardar um pouco antes de começar para garantir estabilidade (reduzido para transição mais rápida)
         Wait(50)
-        
+
         -- IMPORTANTE: Usar SEMPRE a posição passada como parâmetro (que já foi calculada corretamente)
         -- Esta posição foi calculada baseada no spawn anterior OU last_location
         -- Não tentar obter novamente com GetCamCoord pois pode retornar posição errada e causar resets
         local startX, startY, startZ = camX, camY, camZ
-        
+
         -- IMPORTANTE: Sempre manter yaw fixo em 0.0 (mapa sempre "em pé", sem rotação)
         -- A câmera apenas se move, mas nunca gira
         local fixedYaw = 0.0
-        
+
         -- Calcular distância real entre ponto de partida e destino
         local distance = math.sqrt((endX - startX)^2 + (endY - startY)^2)
-        
-        print(string.format('[mri_Qspawn] Distância calculada: %.2fm de (%.2f, %.2f) para (%.2f, %.2f)', 
+
+        print(string.format('[mri_Qspawn] Distância calculada: %.2fm de (%.2f, %.2f) para (%.2f, %.2f)',
             distance, startX, startY, endX, endY))
-        
+
         -- Se a distância for muito pequena ou zero, forçar uso da last_location como ponto de partida
         if distance < 5.0 then
             print('[mri_Qspawn] AVISO: Distância muito pequena ou zero, forçando uso da last_location como ponto de partida')
@@ -717,25 +703,25 @@ local function moveCameraToLocation(coords, duration)
                         local groundZ = getGroundZAtPoint(lastX, lastY, lastZ)
                         startZ = calculatePreviewHeight(lastX, lastY, groundZ)
                         distance = math.sqrt((endX - startX)^2 + (endY - startY)^2)
-                        print(string.format('[mri_Qspawn] Ponto de partida ajustado para last_location: (%.2f, %.2f, %.2f), nova distância: %.2fm', 
+                        print(string.format('[mri_Qspawn] Ponto de partida ajustado para last_location: (%.2f, %.2f, %.2f), nova distância: %.2fm',
                             startX, startY, startZ, distance))
                         break
                     end
                 end
             end
         end
-        
+
         -- Calcular altura final - manter mesma altura para movimento tipo drone
         local endHeight = startZ -- Mesma altura do início para movimento tipo drone
-        
+
         -- SEMPRE usar duração fixa para movimento tipo drone (não calcular baseado em distância)
         -- Duração já foi definida como panDurationBase (7000ms) antes de entrar na thread para movimento extremamente suave
-        print(string.format('[mri_Qspawn] Drone iniciando movimento MUITO suave: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f) distância: %.2fm, duração: %dms', 
+        print(string.format('[mri_Qspawn] Drone iniciando movimento MUITO suave: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f) distância: %.2fm, duração: %dms',
             startX, startY, startZ, endX, endY, endHeight, distance, math.floor(panDuration)))
-        
+
         -- IMPORTANTE: NÃO calcular yaw - manter sempre fixo em 0.0 (mapa sempre "em pé")
         -- A câmera apenas se move horizontalmente, sem rotação
-        
+
         -- Calcular ponto intermediário para curva suave (não linha reta rígida)
         local midX = (startX + endX) / 2.0
         local midY = (startY + endY) / 2.0
@@ -745,51 +731,51 @@ local function moveCameraToLocation(coords, duration)
         local perpAngle = angle + math.pi / 2.0
         midX = midX + math.cos(perpAngle) * curveOffset
         midY = midY + math.sin(perpAngle) * curveOffset
-        
+
         -- MOVIMENTO HORIZONTAL DIRETO (mesma altura, apenas X e Y mudam) - MAXIMAMENTE SUAVE E SEM CORTES
         local panStartTime = GetGameTimer()
-        
+
         -- IMPORTANTE: Usar GetGameTimer dentro do loop para garantir cálculo preciso do progresso
         while GetGameTimer() - panStartTime < panDuration do
             if not DoesCamExist(previewCam) or not isCameraAnimating then break end
-            
+
             local elapsed = GetGameTimer() - panStartTime
             local progress = elapsed / panDuration
             progress = math.min(progress, 1.0)
-            
+
             -- Easing EXTREMAMENTE suave (ease in out cúbico mais suave) para movimento ultra fluido SEM CORTES ou RESETS
             -- Usar ease in out cúbico mais suave: início e fim muito suaves para transição perfeita
             local easeProgress = progress < 0.5
                 and 4 * progress * progress * progress
                 or 1 - math.pow(-2 * progress + 2, 3) / 2
-            
+
             -- Interpolação quadrática (Bezier) para curva suave tipo drone
             local t = easeProgress
             local currentX = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * midX + t * t * endX
             local currentY = (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * midY + t * t * endY
-            
+
             -- MANTER MESMA ALTURA durante todo o movimento (como drone voando na mesma altitude)
             -- Usar altura atual da câmera, sem interpolação
             local currentZ = startZ
-            
+
             -- IMPORTANTE: Manter yaw SEMPRE fixo em 0.0 (mapa sempre "em pé", sem rotação)
             -- A câmera apenas se move, mas NUNCA gira
             local currentYaw = fixedYaw -- Sempre 0.0, sem interpolação
-            
+
             -- IMPORTANTE: Sempre atualizar câmera de forma suave e contínua (SEM cortes ou resets)
             -- Rotação sempre fixa: pitch -90° (satélite), roll 0°, yaw 0° (norte fixo)
             SetCamCoord(previewCam, currentX, currentY, currentZ)
             SetCamRot(previewCam, -90.0, 0.0, currentYaw, 2)
             SetCamFov(previewCam, previewFov)
-            
+
             Wait(0)
         end
-        
+
         if not DoesCamExist(previewCam) or not isCameraAnimating then
             isCameraAnimating = false
             return
         end
-        
+
         -- IMPORTANTE: Garantir posição final exata de forma suave (sem cortes ou resets)
         -- O loop anterior já deixou a câmera na posição correta, apenas garantir valores exatos
         if DoesCamExist(previewCam) then
@@ -797,18 +783,18 @@ local function moveCameraToLocation(coords, duration)
             -- IMPORTANTE: Yaw sempre fixo em 0.0 (mapa sempre "em pé", sem rotação)
             SetCamRot(previewCam, -90.0, 0.0, fixedYaw, 2)
             SetCamFov(previewCam, previewFov)
-            
+
             -- Aguardar um frame para garantir que a posição final foi aplicada suavemente
             Wait(0)
         end
-        
+
         isCameraAnimating = false
         cameraAnimationThread = nil
-        
+
         -- Reiniciar drift da câmera de forma suave (após transição completa)
         Wait(50) -- Aguardar um pouco antes de reiniciar drift para garantir suavidade
         startCameraDrift()
-        
+
         local totalDuration = GetGameTimer() - totalStartTime
         print(string.format('[mri_Qspawn] Movimento drone concluído suavemente em %dms (sem cortes ou resets)', totalDuration))
     end)
@@ -817,20 +803,20 @@ end
 -- Função para fazer zoom da câmera até o jogador (da vista aérea até o chão)
 local function zoomCameraToPlayer(coords, spawnData, duration, callback)
     duration = duration or (config.zoomDuration or 4000)
-    
+
     if not previewCam or not DoesCamExist(previewCam) then
         print('[mri_Qspawn] ERRO: Câmera não existe para zoomCameraToPlayer')
         if callback then callback() end
         return
     end
-    
+
     local endX, endY, endZ = getCoordsValues(coords)
     if not endX or not endY or not endZ then
         print('[mri_Qspawn] ERRO: Coordenadas inválidas para zoomCameraToPlayer')
         if callback then callback() end
         return
     end
-    
+
     -- Obter coordenadas atuais da câmera
     local camX, camY, camZ = GetCamCoord(previewCam)
     if not camX or not camY or not camZ then
@@ -839,36 +825,36 @@ local function zoomCameraToPlayer(coords, spawnData, duration, callback)
         SetCamCoord(previewCam, camX, camY, camZ)
         SetCamRot(previewCam, -90.0, 0.0, 0.0, 2)
     end
-    
+
     local startTime = GetGameTimer()
     local startX, startY, startZ = camX, camY, camZ
     local targetZ = endZ + 1.5 -- 1.5 metros acima do chão
     local hasSpawned = false
-    
+
     CreateThread(function()
         while GetGameTimer() - startTime < duration do
             if not DoesCamExist(previewCam) then
                 break
             end
-            
+
             local elapsed = GetGameTimer() - startTime
             local progress = elapsed / duration
             progress = math.min(progress, 1.0)
-            
+
             -- Easing function (ease in out cubic)
             local easeProgress = progress < 0.5
                 and 4 * progress * progress * progress
                 or 1 - math.pow(-2 * progress + 2, 3) / 2
-            
+
             -- Interpolar posição X e Y (centrar na localização)
             local currentX = startX + (endX - startX) * easeProgress
             local currentY = startY + (endY - startY) * easeProgress
-            
+
             -- Interpolar altura (de alto para baixo) - totalmente de cima para baixo
             local currentHeight = startZ - (startZ - targetZ) * easeProgress
-            
+
             SetCamCoord(previewCam, currentX, currentY, currentHeight)
-            
+
             -- Rotação totalmente de cima para baixo (mantém -90 até quase o final, depois inclina um pouco)
             local pitch
             if progress < 0.8 then
@@ -880,7 +866,7 @@ local function zoomCameraToPlayer(coords, spawnData, duration, callback)
                 pitch = -90.0 + (50.0 * finalProgress) -- De -90 para -40 graus
             end
             SetCamRot(previewCam, pitch, 0.0, 0.0, 2)
-            
+
             -- Spawnar o player quando a câmera estiver próxima (70% do progresso)
             if not hasSpawned and progress >= 0.7 then
                 hasSpawned = true
@@ -895,10 +881,10 @@ local function zoomCameraToPlayer(coords, spawnData, duration, callback)
                     print('[mri_Qspawn] Player posicionado na localização durante o zoom')
                 end
             end
-            
+
             Wait(0)
         end
-        
+
         -- Garantir que o player foi spawnado
         if not hasSpawned then
             local x, y, z, w = getCoordsValues(coords)
@@ -910,13 +896,13 @@ local function zoomCameraToPlayer(coords, spawnData, duration, callback)
                 SetEntityInvincible(cache.ped, true)
             end
         end
-        
+
         -- Garantir posição final da câmera
         if DoesCamExist(previewCam) then
             SetCamCoord(previewCam, endX, endY, targetZ)
             SetCamRot(previewCam, -40.0, 0.0, 0.0, 2)
         end
-        
+
         -- Chamar callback quando o zoom terminar
         if callback then
             callback(spawnData)
@@ -926,8 +912,30 @@ end
 
 -- Callback para obter spawns
 RegisterNUICallback('getSpawns', function(_, cb)
+    print('[mri_Qspawn:LUA] Recebido getSpawns via callback')
     local serializedSpawns = serializeSpawns(spawns)
     cb({ success = true, spawns = serializedSpawns })
+end)
+
+-- Sinal de que o JS está pronto para receber o 'open'
+RegisterNUICallback('nuiReady', function(_, cb)
+    print('[mri_Qspawn:LUA] JS sinalizou NUI_READY. Enviando spawns...')
+    local serializedSpawns = serializeSpawns(spawns)
+
+    SendNUIMessage({
+        action = 'open',
+        spawns = serializedSpawns,
+        title = config.Title or 'SPAWN SELECTOR',
+    })
+
+    -- Selecionar o primeiro
+    if #spawns > 0 then
+        selectedSpawn = spawns[1]
+        selectedSpawnIndex = 1
+        startMarkerThread()
+    end
+
+    cb('ok')
 end)
 
 -- Callback para selecionar spawn (apenas mover câmera, não spawnar)
@@ -937,43 +945,43 @@ RegisterNUICallback('selectSpawn', function(data, cb)
         cb({ success = false, message = 'Spawn inválido' })
         return
     end
-    
+
     local spawnData = spawns[spawnIndex]
-    
+
     if not spawnData or not spawnData.coords then
         cb({ success = false, message = 'Spawn sem coordenadas' })
         return
     end
-    
+
     -- IMPORTANTE: Armazenar spawn ANTERIOR antes de atualizar selectedSpawn
     -- Isso permite usar a posição do spawn anterior como ponto de partida da animação
     previousSelectedSpawn = selectedSpawn
     previousSelectedSpawnIndex = selectedSpawnIndex
-    
+
     -- Agora atualizar o spawn selecionado
     selectedSpawn = spawnData
     selectedSpawnIndex = spawnIndex
-    
+
     print(string.format('[mri_Qspawn] Spawn selecionado: %s (índice %d)', spawnData.label or 'sem label', spawnIndex))
     if previousSelectedSpawn then
         print(string.format('[mri_Qspawn] Spawn anterior: %s (índice %d)', previousSelectedSpawn.label or 'sem label', previousSelectedSpawnIndex))
     else
         print('[mri_Qspawn] Sem spawn anterior, usando last_location como ponto de partida')
     end
-    
+
     -- Atualizar marcador no mapa
     updateMapMarker(spawnIndex)
-    
+
     -- Ocultar ícone durante a animação
     SendNUIMessage({
         action = 'updateMapIcon',
         visible = false
     })
-    
+
     -- Apenas mover a câmera até a localização (sem spawnar)
     -- A função moveCameraToLocation usará previousSpawn ou last_location como ponto de partida
     moveCameraToLocation(spawnData.coords, 2000)
-    
+
     cb({ success = true })
 end)
 
@@ -981,26 +989,26 @@ end)
 local function playSimpleSpawnAnimation()
     CreateThread(function()
         Wait(300) -- Aguardar um pouco
-        
+
         local playerPed = PlayerPedId()
         if not playerPed or playerPed == 0 then
             return
         end
-        
+
         -- Usar animações do config
         local animations = config.spawnAnimations or {
             'WORLD_HUMAN_STAND_IMPATIENT',
             'WORLD_HUMAN_SMOKING',
             'WORLD_HUMAN_HANG_OUT_STREET'
         }
-        
+
         if #animations == 0 then
             return -- Sem animações configuradas
         end
-        
+
         local selectedAnimation = animations[math.random(#animations)]
         local duration = config.spawnAnimationDuration or 3000
-        
+
         TaskStartScenarioInPlace(playerPed, selectedAnimation, 0, true)
         Wait(duration)
         ClearPedTasks(playerPed)
@@ -1014,45 +1022,45 @@ RegisterNUICallback('confirmSpawn', function(_, cb)
         cb({ success = false, message = 'Nenhum spawn selecionado' })
         return
     end
-    
+
     -- Armazenar dados do spawn antes de limpar (para usar no callback)
     local spawnData = {
         coords = selectedSpawn.coords,
         propertyId = selectedSpawn.propertyId,
         label = selectedSpawn.label
     }
-    
+
     print(string.format('[mri_Qspawn] Confirmando spawn: %s', spawnData.label or 'sem label'))
-    
+
     -- Fazer zoom da câmera até o local de spawn (player será spawnado durante o zoom quando próximo)
     zoomCameraToPlayer(spawnData.coords, spawnData, config.zoomDuration or 4000, function(spawnInfo)
         -- Callback executado quando o zoom terminar
-        
+
         -- Fechar NUI antes de fazer fade
         closeSpawnUI()
         selectedSpawn = nil
         selectedSpawnIndex = nil
-        
+
         -- Fade out simples
             DoScreenFadeOut(1000)
             while not IsScreenFadedOut() do
                 Wait(0)
             end
-        
+
         -- Desativar câmera scriptada suavemente antes de parar
         RenderScriptCams(false, true, 1000, true, true)
-        
+
         -- Aguardar transição da câmera
         Wait(1000)
-        
+
         -- Parar e destruir câmera
             stopCamera()
-        
+
         -- Garantir que o player está visível e desbloqueado
         FreezeEntityPosition(cache.ped, false)
         SetEntityVisible(cache.ped, true, false)
         SetEntityInvincible(cache.ped, false)
-        
+
         -- Verificar se é propriedade
         if spawnInfo and spawnInfo.propertyId then
             TriggerServerEvent('ps-housing:server:enterProperty', tostring(spawnInfo.propertyId), 'spawn')
@@ -1065,25 +1073,25 @@ RegisterNUICallback('confirmSpawn', function(_, cb)
                 end
             end
         end
-        
+
         TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
         TriggerEvent('QBCore:Client:OnPlayerLoaded')
-        
+
         -- Fade in - player já está posicionado
         DoScreenFadeIn(800)
         Wait(800)
-        
+
         -- Animação simples (esperando ou fumando)
         playSimpleSpawnAnimation()
-        
+
         -- Mudar para o bucket global (0)
         TriggerServerEvent('mri_Qmultichar:server:setBucket', 0)
         print('[mri_Qspawn] Player movido para o bucket global (0)')
-        
+
         TriggerServerEvent('qbx_spawn:server:spawn')
         print('[mri_Qspawn] Spawn completado')
     end)
-    
+
     cb({ success = true })
 end)
 
@@ -1091,7 +1099,7 @@ end)
 RegisterNUICallback('close', function(data, cb)
     local returnToMultichar = data and data.returnToMultichar or false
     closeSpawnUI()
-    
+
     -- Se deve retornar ao multichar (quando ESC é pressionado)
     if returnToMultichar then
         -- Aguardar um pouco para garantir que a UI foi fechada completamente
@@ -1103,26 +1111,26 @@ RegisterNUICallback('close', function(data, cb)
             print('[mri_Qspawn] AVISO: Resource mri_Qmultichar não encontrado')
         end
     end
-    
+
     cb({ success = true })
 end)
 
 -- Função interna para configurar spawns
 local function setupSpawnsInternal(citizenid)
     spawns = {}
-    
+
     -- SEMPRE tentar obter a última localização do servidor
     local lastLoc, propertyId
     local success = pcall(function()
         lastLoc, propertyId = lib.callback.await('qbx_spawn:server:getLastLocation', false)
     end)
-    
+
     if not success then
         print('[mri_Qspawn] ERRO ao obter última localização do servidor')
         lastLoc = nil
         propertyId = nil
     end
-    
+
     -- Verificar se a última localização é válida
     local hasValidLastLoc = lastLoc and lastLoc.x and lastLoc.y and lastLoc.z
     if hasValidLastLoc then
@@ -1132,7 +1140,7 @@ local function setupSpawnsInternal(citizenid)
             print('[mri_Qspawn] Última localização inválida (posição padrão 0,0,0)')
         end
     end
-    
+
     -- SEMPRE adicionar last_location como primeiro spawn (primeiro na lista)
     if hasValidLastLoc then
         -- Usar a última localização salva
@@ -1151,7 +1159,7 @@ local function setupSpawnsInternal(citizenid)
             local spawn = config.spawns[1]
             local coords = spawn.coords
             local x, y, z, w
-            
+
             if type(coords) == 'vector4' or (coords.x and coords.y and coords.z) then
                 x = tonumber(coords.x) or coords.x
                 y = tonumber(coords.y) or coords.y
@@ -1165,7 +1173,7 @@ local function setupSpawnsInternal(citizenid)
             else
                 x, y, z, w = getCoordsValues(coords)
             end
-            
+
             if x and y and z then
                 spawns[#spawns+1] = {
                     label = 'last_location',
@@ -1188,26 +1196,26 @@ local function setupSpawnsInternal(citizenid)
             print('[mri_Qspawn] Adicionada última localização padrão (posição fixa de emergência)')
         end
     end
-    
+
     -- Agora adicionar os outros spawns (personagem existente mostra todos, novo também)
     print('[mri_Qspawn] Carregando spawns adicionais')
-    
+
     -- Adicionar spawns do config (pular o primeiro se foi usado como last_location padrão)
     if config.spawns and #config.spawns > 0 then
         print(string.format('[mri_Qspawn] Carregando %d spawns do config', #config.spawns))
         local startIndex = 1
-        
+
         -- Se usamos o primeiro spawn como last_location padrão, começar do segundo
         if not hasValidLastLoc and #config.spawns > 0 then
             startIndex = 2
         end
-        
+
         for i = startIndex, #config.spawns do
             local spawn = config.spawns[i]
             if spawn and spawn.coords and spawn.label then
                 local coords = spawn.coords
                 local x, y, z, w
-                
+
                 if type(coords) == 'vector4' or (coords.x and coords.y and coords.z) then
                     x = tonumber(coords.x) or coords.x
                     y = tonumber(coords.y) or coords.y
@@ -1221,7 +1229,7 @@ local function setupSpawnsInternal(citizenid)
                 else
                     x, y, z, w = getCoordsValues(coords)
                 end
-                
+
                 if x and y and z then
                     spawns[#spawns+1] = {
                         label = spawn.label,
@@ -1240,12 +1248,12 @@ local function setupSpawnsInternal(citizenid)
     else
         print('[mri_Qspawn] Nenhum spawn configurado no config.client.lua')
     end
-    
+
     -- Adicionar casas do jogador
     local successHouses, houses = pcall(function()
         return lib.callback.await('qbx_spawn:server:getHouses', false)
     end)
-    
+
     if successHouses and houses and #houses > 0 then
         print(string.format('[mri_Qspawn] Carregando %d casas do jogador', #houses))
         for i = 1, #houses do
@@ -1263,7 +1271,7 @@ local function setupSpawnsInternal(citizenid)
     else
         print('[mri_Qspawn] Jogador não possui casas ou erro ao buscar casas')
     end
-    
+
     -- Verificar se temos pelo menos a last_location (já deve ter, mas verificar por segurança)
     if #spawns == 0 then
         print('[mri_Qspawn] AVISO: Nenhum spawn encontrado, adicionando last_location de emergência')
@@ -1275,7 +1283,7 @@ local function setupSpawnsInternal(citizenid)
             propertyId = nil
         }
     end
-    
+
     -- Garantir que a last_location está sempre no início da lista
     local lastLocationIndex = nil
     for i = 1, #spawns do
@@ -1284,7 +1292,7 @@ local function setupSpawnsInternal(citizenid)
             break
         end
     end
-    
+
     -- Se encontrou last_location mas não está no início, mover para o início
     if lastLocationIndex and lastLocationIndex > 1 then
         local lastLocationSpawn = spawns[lastLocationIndex]
@@ -1292,52 +1300,52 @@ local function setupSpawnsInternal(citizenid)
         table.insert(spawns, 1, lastLocationSpawn)
         print('[mri_Qspawn] Last location movida para o início da lista')
     end
-    
+
     print(string.format('[mri_Qspawn] Total de %d spawns configurados (last_location sempre primeiro)', #spawns))
 end
 
 -- Exportar função para escolher spawn
 exports('chooseSpawn', function(citizenid)
     print(string.format('[mri_Qspawn] chooseSpawn chamado com citizenid: %s', citizenid or 'nil'))
-    
+
     -- Verificar se a UI já está aberta (prevenir abertura duplicada)
     if isNuiOpen then
         print('[mri_Qspawn] AVISO: UI já está aberta, ignorando chooseSpawn')
         return
     end
-    
+
     -- Garantir que NUI focus anterior foi fechado (do multichar ou outras UIs)
     SetNuiFocus(false, false)
     Wait(300) -- Aguardar um pouco mais para garantir que o multichar fechou completamente
-    
+
     -- Limpar estado anterior se houver
     if previewCam and DoesCamExist(previewCam) then
         print('[mri_Qspawn] Limpando câmera anterior antes de configurar novos spawns')
         stopCamera()
         Wait(200)
     end
-    
+
     -- Resetar variáveis de seleção
     selectedSpawn = nil
     selectedSpawnIndex = nil
     previousSelectedSpawn = nil
     previousSelectedSpawnIndex = nil
-    
+
     -- Configurar spawns antes de abrir a UI
     print('[mri_Qspawn] Configurando spawns...')
     setupSpawnsInternal(citizenid)
-    
+
     -- Aguardar um pouco para garantir que os spawns foram configurados
     Wait(400)
-    
+
     -- Verificar se há spawns configurados
     if #spawns == 0 then
         print('[mri_Qspawn] ERRO: Nenhum spawn foi configurado após setupSpawnsInternal!')
         return
     end
-    
+
     print(string.format('[mri_Qspawn] %d spawns configurados, abrindo UI...', #spawns))
-    
+
     -- Agora abrir a UI
     openSpawnUI()
 end)
@@ -1346,7 +1354,7 @@ end)
 AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
     print('[mri_Qspawn] Evento setupSpawns recebido - new:', new)
     spawns = {}
-    
+
     if new then
         -- Novo personagem - mostrar apenas apartamentos
         print('[mri_Qspawn] Novo personagem - processando apartamentos')
@@ -1368,7 +1376,7 @@ AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
     else
         -- Personagem existente - mostrar última localização, spawns configurados e casas
         print('[mri_Qspawn] Personagem existente - carregando locais')
-        
+
         local lastLoc, propertyId = lib.callback.await('qbx_spawn:server:getLastLocation')
         if lastLoc then
         spawns[#spawns+1] = {
@@ -1382,7 +1390,7 @@ AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
         else
             print('[mri_Qspawn] Não foi possível obter última localização')
         end
-        
+
         -- Adicionar spawns do config
         if config.spawns and #config.spawns > 0 then
             print(string.format('[mri_Qspawn] Carregando %d spawns do config', #config.spawns))
@@ -1392,7 +1400,7 @@ AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
                     -- Converter coords para formato simples {x, y, z, w}
                     local coords = spawn.coords
                     local x, y, z, w
-                    
+
                     -- Se é vec4/vector4, extrair valores
                     if type(coords) == 'vector4' or (coords.x and coords.y and coords.z) then
                         x = tonumber(coords.x) or coords.x
@@ -1407,7 +1415,7 @@ AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
                     else
                         x, y, z, w = getCoordsValues(coords)
                     end
-                    
+
                     if x and y and z then
             spawns[#spawns+1] = {
                 label = spawn.label,
@@ -1431,7 +1439,7 @@ AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
                 print('[mri_Qspawn] ERRO: Config é nil!')
             end
         end
-        
+
         -- Adicionar casas do jogador
         local houses = lib.callback.await('qbx_spawn:server:getHouses')
         if houses and #houses > 0 then
@@ -1452,10 +1460,17 @@ AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
             print('[mri_Qspawn] Jogador não possui casas')
         end
     end
-    
+
     print(string.format('[mri_Qspawn] Total de %d spawns configurados', #spawns))
-    
+
     Wait(400)
     openSpawnUI()
+end)
+
+-- Sinal de que o JS está pronto para receber o 'open'
+RegisterNUICallback('nuiReady', function(_, cb)
+    print('[mri_Qspawn:LUA] JS sinalizou NUI_READY. Iniciando sincronização...')
+    sendOpenMessage()
+    cb('ok')
 end)
 

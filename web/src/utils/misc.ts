@@ -6,14 +6,6 @@
 export const isEnvBrowser = (): boolean => !(window as any).invokeNative;
 
 /**
- * Interface for NUI callback response.
- */
-interface NuiResponseData {
-  success: boolean;
-  [key: string]: any;
-}
-
-/**
  * Map of mock data for development mode.
  */
 const mockData: Record<string, any> = {
@@ -96,21 +88,37 @@ export async function fetchNui<T = any>(
 
     // Check if we have predefined mock data for this event
     if (mockData[eventName]) {
-      console.log(`[NUI Mock] Fetching ${eventName}`, data);
+      console.log(`[mri_Qspawn:NUI:Mock] Fetching ${eventName}`, data);
       return mockData[eventName] as T;
     }
 
     return { success: true } as unknown as T;
   }
 
+  // Improved Resource Name Detection
+  // In FiveM, GetParentResourceName is usually available globally.
   const resourceName = (window as any).GetParentResourceName
     ? (window as any).GetParentResourceName()
-    : 'nui-frame-app';
+    : ((window as any).resourceName || 'mri_Qspawn');
 
-  const resp = await fetch(`https://${resourceName}/${eventName}`, options);
-  const respFormatted = await resp.json();
+  console.log(`[mri_Qspawn:NUI] Request: ${eventName} to resource: ${resourceName}`, data);
 
-  return respFormatted;
+  try {
+    const resp = await fetch(`https://${resourceName}/${eventName}`, options);
+
+    if (!resp.ok) {
+        console.error(`[mri_Qspawn:NUI] HTTP Error: ${resp.status} ${resp.statusText} for ${eventName}`);
+        return { success: false, message: `HTTP Error ${resp.status}` } as unknown as T;
+    }
+
+    const respFormatted = await resp.json();
+    console.log(`[mri_Qspawn:NUI] Response: ${eventName}`, respFormatted);
+
+    return respFormatted;
+  } catch (err) {
+    console.error(`[mri_Qspawn:NUI] Fetch Error for ${eventName}:`, err);
+    return { success: false, message: 'Fetch Error' } as unknown as T;
+  }
 }
 
 /**
