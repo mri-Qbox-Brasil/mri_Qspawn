@@ -1,36 +1,37 @@
 return {
     Locale = 'pt-br', -- Idioma para locales (pt-br, en, es, etc.)
+    Title = 'MRI SPAWN SELECTOR', -- Título exibido no topo da tela de seleção de spawn (pode ser alterado)
     
     spawns = {
         {
             label = 'Police Department',
             coords = vec4(441.4, -981.9, 30.7, 90.0),
             icon = 'shield',
-            description = 'Start at police department'
+            description = 'Comece na Delegacia de Polícia'
         },
         {
             label = 'Paleto Bay',
             coords = vec4(80.35, 6424.12, 31.67, 45.5),
             icon = 'leaf',
-            description = 'Start at Paleto Bay'
+            description = 'Comece em Paleto Bay'
         },
         {
             label = 'Sandy Shores',
             coords = vec4(1961.21, 3740.02, 32.34, 300.0),
             icon = 'leaf',
-            description = 'Start at Sandy Shores'
+            description = 'Comece em Sandy Shores'
         },
         {
             label = 'Beach',
             coords = vec4(-1370.0, -987.5, 8.4, 90.0),
             icon = 'umbrella',
-            description = 'Start at the beach'
+            description = 'Comece na Praia'
         },
         {
-            label = 'Motel',
+            label = 'Motel Sua Vó de calçola',
             coords = vec4(327.56, -205.08, 53.08, 163.5),
             icon = 'bed',
-            description = 'Start at motel'
+            description = 'Comece no Motel'
         },
     },
     clouds = true, -- Enable the clouds load in with wake up animation

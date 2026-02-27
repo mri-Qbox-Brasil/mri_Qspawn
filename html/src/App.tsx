@@ -66,6 +66,7 @@ function App() {
   const [isReadyToSpawn, setIsReadyToSpawn] = useState(false)
   const [hasAutoSelected, setHasAutoSelected] = useState(false)
   const [mapIcons, setMapIcons] = useState<Array<{ x: number, y: number, icon: string, label: string, iconColor: string }>>([])
+  const [title, setTitle] = useState('SPAWN SELECTOR')
 
   // Icon mapping com cores vibrantes
   const getIcon = (iconName?: string, size: string = 'w-6 h-6', isSelected: boolean = false) => {
@@ -156,6 +157,9 @@ function App() {
         console.log('[mri_Qspawn] Ação: open. Spawns recebidos:', data.spawns)
         setIsOpen(true)
         setHasAutoSelected(false)
+        if (data.title) {
+          setTitle(data.title)
+        }
         if (data.spawns && Array.isArray(data.spawns) && data.spawns.length > 0) {
           console.log(`[mri_Qspawn] ${data.spawns.length} spawns recebidos via mensagem`)
           setSpawns(data.spawns)
@@ -253,7 +257,7 @@ function App() {
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10">
           <div className="flex items-center gap-2 text-white text-lg font-semibold">
             <MapPin className="w-5 h-5" />
-            <span>SPAWN SELECTOR</span>
+            <span>{title}</span>
           </div>
         </div>
 
@@ -328,7 +332,7 @@ function App() {
             {spawns.length > 0 ? (
               spawns.map((spawn, index) => {
                 const isSelected = selectedIndex === index
-                const displayLabel = spawn.label === 'last_location' ? 'Last Location' : spawn.label
+                const displayLabel = spawn.label
 
                 return (
                   <button

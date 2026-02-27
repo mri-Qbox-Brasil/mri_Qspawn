@@ -1,6 +1,23 @@
 local config = require 'config.client'
 local spawns = {}
 
+-- Função helper para obter label traduzida via locale (ox_lib)
+local function getTranslatedLabel(label)
+    if not label then return label end
+    if label == 'last_location' then
+        return locale('last_location') or label
+    end
+    return label
+end
+
+-- Função helper para obter descrição traduzida via locale (ox_lib)
+-- Usa a chave genérica 'start_at' com o nome do spawn como argumento
+local function getTranslatedDescription(label, fallbackDesc)
+    if fallbackDesc then return fallbackDesc end
+    local displayLabel = (label == 'last_location') and (locale('last_location') or label) or label
+    return locale('start_at', displayLabel) or string.format('Comece em %s', displayLabel)
+end
+
 local isNuiOpen = false
 local previewCam = nil
 local scaleform = nil
@@ -263,7 +280,7 @@ local function startMarkerThread()
                                     x = xPos,
                                     y = yPos,
                                     icon = spawn.icon or 'map-pin',
-                                    label = spawn.label == 'last_location' and 'Last Location' or (spawn.label or 'Location'),
+                                    label = spawn.label == 'last_location' and (locale('last_location') or 'last_location') or (spawn.label or 'Location'),
                                     iconColor = markerConfig.r .. ',' .. markerConfig.g .. ',' .. markerConfig.b
                                 }
                             end
@@ -439,10 +456,10 @@ local function serializeSpawns(spawnsToSerialize)
         end
         
         local serializedSpawn = {
-            label = spawn.label,
+            label = getTranslatedLabel(spawn.label),
             coords = serializedCoords,
             icon = spawn.icon,
-            description = spawn.description,
+            description = spawn.description or getTranslatedDescription(spawn.label, nil),
             propertyId = spawn.propertyId,
             first_time = spawn.first_time,
             key = spawn.key
@@ -532,6 +549,7 @@ local function openSpawnUI()
     SendNUIMessage({
         action = 'open',
         spawns = serializedSpawns,
+        title = config.Title or 'SPAWN SELECTOR',
     })
     
     -- Selecionar automaticamente o primeiro spawn (last_location)
@@ -1357,7 +1375,7 @@ AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
             label = 'last_location',
                 coords = lastLoc,
             icon = 'map-pin',
-                description = 'Start at last location',
+                description = getTranslatedDescription('last_location', 'Retorne à última localização'),
                 propertyId = propertyId
         }
             print('[mri_Qspawn] Adicionada última localização')
@@ -1395,7 +1413,7 @@ AddEventHandler('qb-spawn:client:setupSpawns', function(cData, new, apps)
                 label = spawn.label,
                             coords = { x = x, y = y, z = z, w = w },
                 icon = spawn.icon or 'map-pin',
-                description = spawn.description or string.format('Start at %s', spawn.label)
+                description = spawn.description or getTranslatedDescription(spawn.label, string.format('Start at %s', spawn.label))
             }
                         print(string.format('[mri_Qspawn] Adicionado spawn do config: %s (%.2f, %.2f, %.2f)', spawn.label, x, y, z))
                     else
