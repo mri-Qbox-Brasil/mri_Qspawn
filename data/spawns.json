@@ -1,0 +1,38 @@
+[
+    {
+        "label": "Pillbox Hospital",
+        "coords": { "x": 246.86, "y": -567.63, "z": 42.28, "w": 242.27 },
+        "icon": "bed",
+        "description": "Pillbox Hill, ao sul de Strawberry e Chamberlain Hills."
+    },
+    {
+        "label": "MRPD",
+        "coords": { "x": 411.63, "y": -966.19, "z": 28.47, "w": 226.55 },
+        "icon": "shield",
+        "description": "Estação de polícia central — prédio moderno de três andares em Mission Row."
+    },
+    {
+        "label": "Bennys Garage",
+        "coords": { "x": -184.34, "y": -1295.03, "z": 30.3, "w": 127.36 },
+        "icon": "building",
+        "description": "Bennys Original Motor Works — oficina especializada em modificação de veículos."
+    },
+    {
+        "label": "Legion Square",
+        "coords": { "x": 223.5, "y": -867.02, "z": 29.49, "w": 11.52 },
+        "icon": "map-pin",
+        "description": "Distrito comercial central com esculturas icônicas no coração da cidade."
+    },
+    {
+        "label": "Paleto Garage",
+        "coords": { "x": 126.39, "y": 6625.41, "z": 30.79, "w": 232.79 },
+        "icon": "leaf",
+        "description": "Costa norte de Blaine County, na base do Monte Chiliad."
+    },
+    {
+        "label": "Sandy Airstrip",
+        "coords": { "x": 1747.18, "y": 3274.98, "z": 40.12, "w": 65.92 },
+        "icon": "leaf",
+        "description": "Aeródromo privado em Panorama Drive, perto de Sandy Shores."
+    }
+]

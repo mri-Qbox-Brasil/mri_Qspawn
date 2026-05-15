@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Saira:ital,wght@0,100..900;1,100..900&display=swap');
+
+:root {
+    --marker-color: #a0ff73;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    overflow: hidden; /* CEF gera scrollbar default que aparece como pixel sujo na textura DUI. */
+}
+
+body {
+    width: 512px;
+    height: 1024px;
+    background: transparent;
+    font-family: 'Saira', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+#marker {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 60px;
+}
+
+#label {
+    font-size: 80px;
+    font-weight: 900;
+    font-style: italic;
+    color: white;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-align: center;
+    line-height: 0.95;
+    padding: 0 30px; /* italic slant precisa de margem extra senão clipa a última letra. */
+    overflow-wrap: break-word;
+    text-shadow:
+        0 0 30px rgba(0, 0, 0, 0.95),
+        4px 4px 12px rgba(0, 0, 0, 0.9);
+    animation: fade-in 0.4s ease-out;
+}
+
+.arrow {
+    width: 0;
+    height: 0;
+    border-left: 36px solid transparent;
+    border-right: 36px solid transparent;
+    border-top: 54px solid var(--marker-color);
+    margin-top: 40px;
+    margin-bottom: 15px;
+    filter: drop-shadow(0 0 16px var(--marker-color));
+}
+
+.line {
+    width: 8px;
+    flex-grow: 1;
+    background: linear-gradient(to bottom, white 0%, transparent 100%);
+}
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

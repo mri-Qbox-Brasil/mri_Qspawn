@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="style.css" />
+    <script>
+        // Auto-fit: shrink font até caber sem clip horizontal nem vertical.
+        // Margem extra no maxWidth pra acomodar a slant do italic + letter-spacing.
+        function fitLabel(label) {
+            label.style.fontSize = '';
+            let fontSize = 80;
+            const maxWidth = 460;
+            const maxHeight = 280;
+            label.style.fontSize = fontSize + 'px';
+            while ((label.scrollWidth > maxWidth || label.scrollHeight > maxHeight) && fontSize > 32) {
+                fontSize -= 2;
+                label.style.fontSize = fontSize + 'px';
+            }
+        }
+
+        // Setup via URL params em vez de mensagem assíncrona — sem race quando
+        // várias DUIs sobem em paralelo e a Lua espera ack de load.
+        document.addEventListener('DOMContentLoaded', function () {
+            const params = new URLSearchParams(window.location.search);
+            const label = params.get('label');
+            const color = params.get('color');
+            if (color) document.documentElement.style.setProperty('--marker-color', color);
+            if (label) {
+                const labelEl = document.getElementById('label');
+                labelEl.textContent = label;
+                fitLabel(labelEl);
+            }
+        });
+    </script>
+</head>
+<body>
+    <div id="marker">
+        <div id="label"></div>
+        <div class="arrow"></div>
+        <div class="line"></div>
+    </div>
+</body>
+</html>
