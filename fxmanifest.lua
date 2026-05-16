@@ -1,10 +1,10 @@
-fx_version '2.1.1'
+fx_version 'cerulean'
 game 'gta5'
 
 name 'mri_Qspawn'
 description 'Sistema de spawn com NUI moderna baseada em shadcn/ui'
 author 'MRI'
-version '2.1.1'
+version '2.1.2'
 
 ox_lib 'locale'
 
