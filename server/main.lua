@@ -22,19 +22,18 @@ AddConvarChangeListener('mri:color', function(name)
     TriggerClientEvent('mri_Qspawn:client:accentColorChanged', -1, newColor)
 end)
 
+AddConvarChangeListener('mri:backgroundColor', function(name)
+    if name ~= 'mri:backgroundColor' then return end
+    local newColor = GetConvar('mri:backgroundColor', '')
+    TriggerClientEvent('mri_Qspawn:client:backgroundColorChanged', -1, newColor)
+end)
+
 -- Registra o painel admin do mri_Qspawn como plugin do mri_Qadmin via export.
 -- Se Qadmin nao tiver rodando no server, o pcall protege e o painel continua
 -- acessivel via /adminspawn standalone normalmente. Manifest shape espelha
 -- web/src/plugin/types.ts (drift control manual).
-CreateThread(function()
-    -- Espera o Qadmin terminar de iniciar (resources podem subir em ordens
-    -- diferentes). Se nem tiver no server, o while sai pelo timeout.
-    local deadline = GetGameTimer() + 10000
-    while GetResourceState('mri_Qadmin') ~= 'started' and GetGameTimer() < deadline do
-        Wait(200)
-    end
-    if GetResourceState('mri_Qadmin') ~= 'started' then return end -- Qadmin ausente, ok
-
+local function registerPlugin()
+    if GetResourceState('mri_Qadmin') ~= 'started' then return end
     local ok, result = pcall(function()
         return exports['mri_Qadmin']:RegisterPlugin({
             id = 'spawns',
@@ -42,14 +41,27 @@ CreateThread(function()
             icon = 'map-pin',
             resource = 'mri_Qspawn',
             htmlPath = 'html/index.html',
-            -- Semantica OR (qualquer uma libera). `command` cobre god/console
-            -- igual ao gate interno do /adminspawn em server/spawns.lua.
             requiredPerms = { 'mri_Qspawn.admin', 'command' },
             description = 'CRUD de spawns iniciais do servidor',
         })
     end)
     if not ok or result == false then
         print(('[mri_Qspawn] Falha ao registrar plugin no mri_Qadmin: %s'):format(tostring(result)))
+    end
+end
+
+CreateThread(function()
+    local deadline = GetGameTimer() + 10000
+    while GetResourceState('mri_Qadmin') ~= 'started' and GetGameTimer() < deadline do
+        Wait(200)
+    end
+    registerPlugin()
+end)
+
+AddEventHandler('onResourceStart', function(resourceName)
+    if resourceName == 'mri_Qadmin' then
+        Wait(500) -- aguarda exports ficarem disponíveis
+        registerPlugin()
     end
 end)
 

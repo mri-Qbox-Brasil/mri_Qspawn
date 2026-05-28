@@ -22,6 +22,7 @@ end
 -- `mri:color` da suite MRI (nao e tunavel via UI deste plugin). Atualizado
 -- pelo handler de `mri_Qspawn:client:accentColorChanged`.
 local accentColor = GetConvar('mri:color', '#00E699')
+local backgroundColor = GetConvar('mri:backgroundColor', '')
 
 -- Log gated por config.debug; usar print() apenas para erros reais.
 local function debug(...)
@@ -284,6 +285,7 @@ function sendOpenMessage()
         action = 'open',
         spawns = serializeSpawns(spawns),
         accentColor = accentColor,
+        backgroundColor = backgroundColor,
         locale = GetConvar('ox:locale', 'en'),
     })
 
@@ -815,6 +817,7 @@ RegisterCommand('adminspawn', function()
         action = 'openAdmin',
         spawns = cachedDataSpawns or {},
         accentColor = accentColor,
+        backgroundColor = backgroundColor,
         locale = GetConvar('ox:locale', 'en'),
     })
 end, false)
@@ -887,6 +890,14 @@ RegisterNetEvent('mri_Qspawn:client:accentColorChanged', function(newColor)
 
     if isNuiOpen or isAdminPanelOpen then
         SendNUIMessage({ action = 'updateAccentColor', accentColor = newColor })
+    end
+end)
+
+RegisterNetEvent('mri_Qspawn:client:backgroundColorChanged', function(newColor)
+    backgroundColor = type(newColor) == 'string' and newColor or ''
+
+    if isNuiOpen or isAdminPanelOpen then
+        SendNUIMessage({ action = 'updateBackgroundColor', backgroundColor = backgroundColor })
     end
 end)
 
