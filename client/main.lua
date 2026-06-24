@@ -7,14 +7,24 @@ local spawns = {}
 -- desta tabela antes da hidratacao terminar — use ensureConfig() ou getConfig().
 local config = {}
 local configHydrated = false
+local configLoading = false
 
 local function ensureConfig()
     if configHydrated then return end
+    -- Guard de reentrada: segunda corrotina aguarda enquanto a primeira carrega.
+    -- Sem isso, duas corrotinas passam pelo check antes do await e disparam dois
+    -- callbacks ao servidor desnecessariamente.
+    if configLoading then
+        while not configHydrated do Wait(50) end
+        return
+    end
+    configLoading = true
     local data = lib.callback.await('mri_Qspawn:server:getConfig', false)
     if type(data) == 'table' then
         for k, v in pairs(data) do config[k] = v end
     end
     configHydrated = true
+    configLoading = false
     Waypoints.setColorDefault(config.defaultSpawnIconColor)
 end
 
@@ -539,21 +549,15 @@ local function playSimpleSpawnAnimation()
     CreateThread(function()
         Wait(300)
 
-        local playerPed = PlayerPedId()
-        if not playerPed or playerPed == 0 then
-            return
-        end
-
         local animations = config.spawnAnimations
-
-        if #animations == 0 then return end
+        if not animations or #animations == 0 then return end
 
         local selectedAnimation = animations[math.random(#animations)]
         local duration = config.spawnAnimationDuration
 
-        TaskStartScenarioInPlace(playerPed, selectedAnimation, 0, true)
+        TaskStartScenarioInPlace(cache.ped, selectedAnimation, 0, true)
         Wait(duration)
-        ClearPedTasks(playerPed)
+        ClearPedTasks(cache.ped)
     end)
 end
 
@@ -899,5 +903,24 @@ RegisterNetEvent('mri_Qspawn:client:backgroundColorChanged', function(newColor)
     if isNuiOpen or isAdminPanelOpen then
         SendNUIMessage({ action = 'updateBackgroundColor', backgroundColor = backgroundColor })
     end
+end)
+
+-- Garante que NUI focus, câmera e estado do ped são restaurados se o recurso
+-- for reiniciado/parado enquanto a UI estava aberta. Sem isso o jogador fica
+-- travado (frozen, invisível) e sem input de teclado indefinidamente.
+AddEventHandler('onResourceStop', function(resource)
+    if resource ~= cache.resource then return end
+    if isNuiOpen or isAdminPanelOpen then
+        SetNuiFocus(false, false)
+    end
+    if previewCam and DoesCamExist(previewCam) then
+        SetCamActive(previewCam, false)
+        RenderScriptCams(false, false, 0, true, true)
+        DestroyCam(previewCam, true)
+        ClearFocus()
+    end
+    FreezeEntityPosition(cache.ped, false)
+    SetEntityInvincible(cache.ped, false)
+    SetEntityVisible(cache.ped, true, false)
 end)
 
