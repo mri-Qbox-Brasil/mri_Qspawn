@@ -10,8 +10,13 @@ local configHydrated = false
 
 local function ensureConfig()
     if configHydrated then return end
-    local data = lib.callback.await('mri_Qspawn:server:getConfig', false)
-    if type(data) == 'table' then
+    -- pcall: se o await falhar/der timeout (ox:callbackTimeout), ainda marca
+    -- hidratado — senão um erro propagaria pro caller (openSpawnUI) no meio do
+    -- fluxo de câmera, deixando o jogador preso.
+    local ok, data = pcall(function()
+        return lib.callback.await('mri_Qspawn:server:getConfig', false)
+    end)
+    if ok and type(data) == 'table' then
         for k, v in pairs(data) do config[k] = v end
     end
     configHydrated = true
@@ -222,6 +227,11 @@ local function openSpawnUI()
         return
     end
 
+    -- Garante config hidratado ANTES de qualquer leitura (buildCinematicShots,
+    -- durações). O caminho chooseSpawn→openSpawnUI não passa pela thread de boot;
+    -- sem isso, um spawn muito cedo leria config vazio e crasharia.
+    ensureConfig()
+
     isNuiOpen = true
     hasJsSignaledReady = false
 
@@ -256,22 +266,30 @@ local function openSpawnUI()
     startCinematic(fx, fy, fz, fw)
 
     if jsHasMounted then
+        -- React já montou numa sessão anterior e continua escutando: entrega o
+        -- open agora e marca como confirmado. Sem isso, o fallback abaixo (que
+        -- depende de hasJsSignaledReady, só setado via nuiReady no mount —
+        -- disparado uma única vez) dispararia aos 4s em TODA sessão a partir da
+        -- 2ª, re-enviando 'open' e resetando a seleção do jogador pro spawns[1].
         sendOpenMessage()
-    end
-
-    CreateThread(function()
-        local timeout = 4000
-        local start = GetGameTimer()
-        while isNuiOpen and not hasJsSignaledReady do
-            if GetGameTimer() - start > timeout then
-                print('[mri_Qspawn] AVISO: JS demorou demais ou não carregou. Forçando abertura via fallback...')
-                hasFallbackFired = true
-                sendOpenMessage()
-                break
+        hasJsSignaledReady = true
+    else
+        -- Primeira abertura, antes do mount do React: espera o nuiReady ou força
+        -- o envio após o timeout.
+        CreateThread(function()
+            local timeout = 4000
+            local start = GetGameTimer()
+            while isNuiOpen and not hasJsSignaledReady do
+                if GetGameTimer() - start > timeout then
+                    print('[mri_Qspawn] AVISO: JS demorou demais ou não carregou. Forçando abertura via fallback...')
+                    hasFallbackFired = true
+                    sendOpenMessage()
+                    break
+                end
+                Wait(100)
             end
-            Wait(100)
-        end
-    end)
+        end)
+    end
 end
 
 -- Idempotente: chamado pelo nuiReady (JS confirma mount) e pelo fallback de
@@ -341,9 +359,11 @@ end
 -- offsetY = distância à frente do ped; rotacionada pelo heading pra cam ficar
 -- sempre em frente (ped olha pra cam) independente do `w` do spawn.
 function buildCinematicShots(cx, cy, cz, heading)
-    local s = config.cinematicShot
-    local fwdStart = s.startOffsetY
-    local fwdEnd   = s.endOffsetY
+    -- Defaults inline: se config.cinematicShot vier ausente (JSON corrompido/
+    -- deletado ou save parcial da UI), cai nos padrões em vez de crashar.
+    local s = config.cinematicShot or {}
+    local fwdStart = s.startOffsetY or 200.0
+    local fwdEnd   = s.endOffsetY or 6.0
     local h = math.rad(heading or 0.0)
     local sinH, cosH = math.sin(h), math.cos(h)
 
@@ -360,7 +380,7 @@ function buildCinematicShots(cx, cy, cz, heading)
 
     return {
         {
-            duration = config.cinematicDuration, linear = false,
+            duration = config.cinematicDuration or 6000, linear = false,
             from = { dx = startX - cx, dy = startY - cy, dz = startZ - cz,
                      pitch = startPitch, roll = 0.0, yaw = startYaw, fov = startFov },
             to   = { dx = endX - cx,   dy = endY - cy,   dz = endZ - cz,
@@ -434,7 +454,7 @@ local function moveCameraToLocation(coords)
 
     isTransitioning = true
     CreateThread(function()
-        local fadeDuration = config.transitionFadeDuration
+        local fadeDuration = config.transitionFadeDuration or 250
         local tx, ty, tz, tw = x, y, z, w
 
         while tx do
@@ -467,7 +487,7 @@ local function moveCameraToLocation(coords)
 end
 
 local function zoomCameraToPlayer(coords, spawnData, duration, callback)
-    duration = duration or config.zoomDuration
+    duration = duration or config.zoomDuration or 1800
 
     if not previewCam or not DoesCamExist(previewCam) then
         print('[mri_Qspawn] ERRO: Câmera não existe para zoomCameraToPlayer')
@@ -514,8 +534,12 @@ RegisterNUICallback('getSpawns', function(_, cb)
 end)
 
 RegisterNUICallback('selectSpawn', function(data, cb)
+    if type(data.index) ~= 'number' then
+        cb({ success = false, message = 'Índice inválido' })
+        return
+    end
     local spawnIndex = data.index + 1 -- React usa índice 0, Lua usa 1.
-    if not spawnIndex or spawnIndex < 1 or spawnIndex > #spawns then
+    if spawnIndex < 1 or spawnIndex > #spawns then
         cb({ success = false, message = 'Spawn inválido' })
         return
     end
@@ -546,10 +570,10 @@ local function playSimpleSpawnAnimation()
 
         local animations = config.spawnAnimations
 
-        if #animations == 0 then return end
+        if not animations or #animations == 0 then return end
 
         local selectedAnimation = animations[math.random(#animations)]
-        local duration = config.spawnAnimationDuration
+        local duration = config.spawnAnimationDuration or 3000
 
         TaskStartScenarioInPlace(playerPed, selectedAnimation, 0, true)
         Wait(duration)

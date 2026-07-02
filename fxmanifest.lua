@@ -8,6 +8,13 @@ version '2.2.0'
 
 ox_lib 'locale'
 
+-- Substitui o qbx_spawn (registra os mesmos callbacks). NÃO rodar os dois juntos.
+provide 'qbx_spawn'
+
+-- Dependência dura: usa exports.qbx_core e o entrypoint chooseSpawn é chamado
+-- pelo multichar do qbx_core. Declara pra falhar cedo e fixar ordem de carga.
+dependency 'qbx_core'
+
 shared_scripts {
 	'@ox_lib/init.lua',
 }
