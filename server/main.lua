@@ -65,26 +65,42 @@ AddEventHandler('onResourceStart', function(resourceName)
     end
 end)
 
+-- Tabela local de controle de primeiro-spawn (selectOnFirstSpawn). Substitui
+-- GlobalState para evitar race read-modify-write quando dois jogadores spawnam
+-- simultaneamente. Persiste apenas em memória: intencional, reiniciar o recurso
+-- reseta o controle (comportamento equivalente ao anterior com GlobalState).
+local spawnedPlayers = {}
+
+local function waitForPlayer(source, timeoutMs)
+    local player = exports.qbx_core:GetPlayer(source)
+    local deadline = GetGameTimer() + (timeoutMs or 5000)
+    while not player and GetGameTimer() < deadline do
+        Wait(100)
+        player = exports.qbx_core:GetPlayer(source)
+    end
+    return player
+end
+
 -- Usar exatamente as mesmas funções do qbx_spawn
 lib.callback.register('qbx_spawn:server:getLastLocation', function(source)
     local player = exports.qbx_core:GetPlayer(source)
     if not player then
         return nil, nil
     end
-    
+
     local result = MySQL.single.await(
         'SELECT position FROM players WHERE citizenid = ?',
         {player.PlayerData.citizenid}
     )
-    
+
     if not result or not result.position then
         return nil, nil
     end
-    
+
     local position = json.decode(result.position)
     local propertyId = player.PlayerData.metadata.inside and
-        player.PlayerData.metadata.inside.property_id or nil
-    
+        player.PlayerData.metadata.inside.propertyId or nil
+
     return position, propertyId
 end)
 
@@ -99,8 +115,8 @@ lib.callback.register('qbx_spawn:server:getHouses', function(source)
     local houseData = {}
 
     local houses = MySQL.query.await(
-                       'SELECT * FROM properties WHERE owner_citizenid = ?',
-                       {player.PlayerData.citizenid})
+        'SELECT property_id, street, apartment FROM properties WHERE owner_citizenid = ?',
+        {player.PlayerData.citizenid})
 
     if not houses then return {} end
 
@@ -123,25 +139,16 @@ end)
 
 lib.callback.register('qbx_spawn:server:alreadySpawned', function(source)
     if not GetSpawnConfig().selectOnFirstSpawn then return false end
-    local player = exports.qbx_core:GetPlayer(source)
-    while not player do
-        Wait(100)
-        player = exports.qbx_core:GetPlayer(source)
-    end
-    local spawnedPlayers = GlobalState.SpawnedPlayers or {}
-    return spawnedPlayers[player.PlayerData.citizenid]
+    local player = waitForPlayer(source)
+    if not player then return false end
+    return spawnedPlayers[player.PlayerData.citizenid] == true
 end)
 
 RegisterNetEvent('qbx_spawn:server:spawn', function()
     if not GetSpawnConfig().selectOnFirstSpawn then return end
-    local player = exports.qbx_core:GetPlayer(source)
-    while not player do
-        Wait(100)
-        player = exports.qbx_core:GetPlayer(source)
-    end
-    local spawnedPlayers = GlobalState.SpawnedPlayers or {}
+    local player = waitForPlayer(source)
+    if not player then return end
     spawnedPlayers[player.PlayerData.citizenid] = true
-    GlobalState:set('SpawnedPlayers', spawnedPlayers, true)
 end)
 
 -- Aviso de conflito: mri_Qspawn SUBSTITUI o qbx_spawn (mesmos callbacks/evento).
