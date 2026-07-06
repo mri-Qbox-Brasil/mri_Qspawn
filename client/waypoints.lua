@@ -194,3 +194,5 @@ AddEventHandler('onResourceStop', function(resource)
 end)
 
 return M
+
+-- teste: porte automático de PR público para a fonte privada
