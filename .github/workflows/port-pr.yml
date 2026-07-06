@@ -1,0 +1,34 @@
+name: Portar PR para source
+
+# Porta PRs da comunidade (repo público) para o repo de fonte privado,
+# preservando o autor original, e fecha o PR público com um aviso.
+#
+# Habilite definindo a variável de repositório PORT_TO_SOURCE = true
+# (Settings → Secrets and variables → Actions → Variables).
+# Por padrão o destino é "<este-repo>-source"; para outro nome, defina a
+# variável SOURCE_REPO = owner/repo.
+
+on:
+  pull_request_target:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: 'Número do PR público a portar manualmente'
+        required: true
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  port:
+    if: ${{ vars.PORT_TO_SOURCE == 'true' }}
+    uses: mri-Qbox-Brasil/workflows/.github/workflows/callable-port-pr.yml@main
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+    with:
+      private-repo: ${{ vars.SOURCE_REPO }}   # vazio => <repo>-source
+      pr-number: ${{ inputs.pr-number }}       # vazio no gatilho automático
+      apply-exclude: 'html/*'                  # ignora build output no diff
+      pr-team: ${{ vars.PR_TEAM }}             # time marcado no comentário de falha
