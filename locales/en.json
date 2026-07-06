@@ -1,5 +1,6 @@
 {
     "last_location": "Last Location",
+    "start_at": "Starting point at %s",
     "select_spawn": "Select where you want to start",
     "press_enter": "Press ENTER to spawn at the selected location",
     "press_esc": "Press ESC to cancel",

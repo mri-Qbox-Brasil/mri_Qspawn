@@ -105,7 +105,13 @@ lib.callback.register('qbx_spawn:server:getLastLocation', function(source)
 end)
 
 lib.callback.register('qbx_spawn:server:getHouses', function(source)
+    -- ps-housing é opcional: sem ele não há casas — sai cedo pra não chamar
+    -- export inexistente nem consultar a tabela `properties` ausente.
+    if GetResourceState('ps-housing') ~= 'started' then return {} end
+
     local player = exports.qbx_core:GetPlayer(source)
+    if not player then return {} end
+
     local houseData = {}
 
     local houses = MySQL.query.await(
@@ -117,9 +123,14 @@ lib.callback.register('qbx_spawn:server:getHouses', function(source)
     for i = 1, #houses do
         local house = houses[i]
         if not house.apartment then
+            -- getMainDoor pode retornar nil e door.doors pode ser nil: protege a
+            -- cadeia de coords com parênteses e só adiciona se resolveu coords.
             local door = exports['ps-housing']:getMainDoor(house.property_id, 1, true)
-            local coords = door.objCoords or door.coords or door.doors[1] and door.doors[1].coords or door.doors[1].objCoords
-            houseData[#houseData + 1] = {label = house.street, coords = coords, propertyId = house.property_id}
+            local coords = door and (door.objCoords or door.coords
+                or (door.doors and door.doors[1] and (door.doors[1].coords or door.doors[1].objCoords)))
+            if coords then
+                houseData[#houseData + 1] = {label = house.street, coords = coords, propertyId = house.property_id}
+            end
         end
     end
 
@@ -138,5 +149,14 @@ RegisterNetEvent('qbx_spawn:server:spawn', function()
     local player = waitForPlayer(source)
     if not player then return end
     spawnedPlayers[player.PlayerData.citizenid] = true
+end)
+
+-- Aviso de conflito: mri_Qspawn SUBSTITUI o qbx_spawn (mesmos callbacks/evento).
+-- Se os dois rodarem juntos, o ox_lib registra handlers duplicados e as respostas
+-- colidem (query dupla, alreadySpawned/spawn ambíguos).
+CreateThread(function()
+    if GetResourceState('qbx_spawn') == 'started' then
+        print('[mri_Qspawn] ERRO: qbx_spawn está ATIVO — remova-o; os callbacks vão colidir com mri_Qspawn.')
+    end
 end)
 

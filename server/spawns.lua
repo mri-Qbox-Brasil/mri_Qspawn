@@ -11,7 +11,14 @@ local function loadFromDisk()
         return
     end
     local ok, parsed = pcall(json.decode, raw)
-    spawns = (ok and type(parsed) == 'table') and parsed or {}
+    if not ok or type(parsed) ~= 'table' then
+        -- Paridade com config.lua: loga em vez de zerar silenciosamente todos os
+        -- spawns num JSON corrompido (facilita diagnóstico da perda).
+        print(('[mri_Qspawn] AVISO: %s corrompido — usando lista vazia.'):format(SPAWNS_FILE))
+        spawns = {}
+        return
+    end
+    spawns = parsed
 end
 
 local function saveToDisk()
