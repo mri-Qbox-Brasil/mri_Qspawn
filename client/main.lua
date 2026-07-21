@@ -73,7 +73,7 @@ local jsHasMounted = false -- React envia nuiReady no mount; usado pra evitar Se
 -- com um balanço idle sutil (respiração). Trocar de local = "piscar" (match-cut:
 -- fade-out rápido → reposiciona → fade-in). Forward-declarado aqui porque
 -- openSpawnUI/selectSpawn/confirmSpawn (acima) precisam chamar.
-local createCam, startCameraLoop, requestShowLocation, startDescend
+local createCam, startCameraLoop, requestShowLocation, startEmerge
 local resolveGroundZ, teleportPed, setupShot
 local cam = {
     mode = nil,        -- 'presence'
@@ -503,20 +503,51 @@ requestShowLocation = function(coords)
     end)
 end
 
--- "Ficar" (confirmar). Sem movimento de câmera — só garante estado estável (não
--- piscando) e chama onDone, que faz o fade final + spawna.
-startDescend = function(onDone)
-    CreateThread(function()
-        local deadline = GetGameTimer() + 6000
-        while isNuiOpen and cam.busy and GetGameTimer() < deadline do Wait(50) end
-        if onDone then onDone() end
-    end)
+local function easeInOut(p)
+    if p < 0.5 then return 4 * p * p * p end
+    return 1 - math.pow(-2 * p + 2, 3) / 2
+end
+
+-- "Nascimento" (confirmar): a câmera SAI da 1ª pessoa (olhos) puxando pra trás e
+-- um pouco pra cima até a 3ª pessoa atrás do ped, revelando o personagem no
+-- mundo. O ped só aparece um pouco depois do início (quando a lente já saiu da
+-- cabeça). No fim, blend pro gameplay cam. Sem fade.
+local function updateEmerge()
+    local e = config.emerge or {}
+    local p = config.presence or {}
+    local t = cam.target
+    if not t then return end
+    local prog = math.min((GetGameTimer() - cam.emergeStart) / (e.duration or 1500), 1.0)
+    local tt = easeInOut(prog)
+
+    -- Revela o ped só quando a lente JÁ SAIU da cabeça (distância real percorrida
+    -- pra trás > ~0.45m), senão pisca o interior da cabeça no primeiro frame.
+    if not cam.emergeRevealed and tt * (e.distance or 4.0) > 0.45 then
+        SetEntityVisible(cache.ped, true, false)
+        cam.emergeRevealed = true
+    end
+
+    local h = math.rad(t.w or 0.0)
+    local fwdX, fwdY = -math.sin(h), math.cos(h)
+    local ex = t.x - fwdX * (e.distance or 4.0)
+    local ey = t.y - fwdY * (e.distance or 4.0)
+    local ez = cam.eyeZ + (e.height or 0.6)
+
+    SetCamCoord(previewCam,
+        t.x + (ex - t.x) * tt,
+        t.y + (ey - t.y) * tt,
+        cam.eyeZ + (ez - cam.eyeZ) * tt)
+    SetCamRot(previewCam,
+        (p.pitch or 0.0) + ((e.pitch or -3.0) - (p.pitch or 0.0)) * tt,
+        0.0, t.w or 0.0, 0)
+    SetCamFov(previewCam, p.fov or 50.0)
 end
 
 startCameraLoop = function()
     CreateThread(function()
         while isNuiOpen and previewCam and DoesCamExist(previewCam) do
-            if cam.mode == 'presence' then updatePresence() end
+            if cam.mode == 'presence' then updatePresence()
+            elseif cam.mode == 'emerge' then updateEmerge() end
             if config.postfx and config.postfx.dof then SetUseHiDof() end
             Wait(0)
         end
@@ -569,6 +600,111 @@ local function playSimpleSpawnAnimation()
     end)
 end
 
+-- Dispara os eventos de carga do player (housing + OnPlayerLoaded). Ideal com o
+-- ped ESCONDIDO: o reapply de aparência (illenium) fica oculto.
+local function triggerSpawnLoad(spawnInfo)
+    if spawnInfo.propertyId then
+        TriggerServerEvent('ps-housing:server:enterProperty', tostring(spawnInfo.propertyId), 'spawn')
+    elseif spawnInfo.label == 'last_location' and QBX and QBX.PlayerData and QBX.PlayerData.metadata then
+        local insideMeta = QBX.PlayerData.metadata['inside']
+        if insideMeta and insideMeta.property_id then
+            TriggerServerEvent('ps-housing:server:enterProperty', tostring(insideMeta.property_id))
+        end
+    end
+    TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
+    TriggerEvent('QBCore:Client:OnPlayerLoaded')
+end
+
+-- True se o spawn cai dentro de uma propriedade (housing assume câmera/teleporte,
+-- então usamos fade em vez do "nascimento" cinematográfico).
+local function spawnEntersProperty(spawnInfo)
+    if spawnInfo.propertyId then return true end
+    if spawnInfo.label == 'last_location' and QBX and QBX.PlayerData and QBX.PlayerData.metadata then
+        local insideMeta = QBX.PlayerData.metadata['inside']
+        return insideMeta ~= nil and insideMeta.property_id ~= nil
+    end
+    return false
+end
+
+local function finishSpawn()
+    playSimpleSpawnAnimation()
+    if GetResourceState('mri_Qmultichar'):find('start') then
+        TriggerServerEvent('mri_Qmultichar:server:setBucket', 0)
+    end
+    TriggerServerEvent('qbx_spawn:server:spawn')
+    debug('[mri_Qspawn] Spawn completado')
+end
+
+startEmerge = function(spawnData)
+    CreateThread(function()
+        -- Espera terminar um "piscar" em andamento pra sair de um estado estável.
+        local deadline = GetGameTimer() + 6000
+        while isNuiOpen and cam.busy and GetGameTimer() < deadline do Wait(50) end
+        if not isNuiOpen or not previewCam or not DoesCamExist(previewCam) then return end
+
+        local e = config.emerge or {}
+
+        -- Fecha a NUI (a câmera continua nossa até o blend). isNuiOpen segue true
+        -- pra o render loop e o hide-hud continuarem rodando durante o nascimento.
+        selectedSpawn = nil
+        selectedSpawnIndex = nil
+        SetNuiFocus(false, false)
+        SendNUIMessage({ action = 'close' })
+
+        if spawnEntersProperty(spawnData) then
+            -- Cai dentro de casa: fade (o housing assume câmera/teleporte).
+            DoScreenFadeOut(400)
+            while not IsScreenFadedOut() do Wait(0) end
+            cam.mode = nil
+            isNuiOpen = false
+            stopCamera()
+            FreezeEntityPosition(cache.ped, false)
+            SetEntityVisible(cache.ped, true, false)
+            SetEntityInvincible(cache.ped, false)
+            setCustomHudHidden(false)
+            triggerSpawnLoad(spawnData)
+            Wait(e.settle or 900)
+            DoScreenFadeIn(400)
+            Wait(300)
+            finishSpawn()
+            return
+        end
+
+        -- 1. Carga com o ped ESCONDIDO (aparência reaplica oculta).
+        triggerSpawnLoad(spawnData)
+        Wait(e.settle or 900)
+        if not previewCam or not DoesCamExist(previewCam) then isNuiOpen = false; return end
+
+        -- 2. Reafirma o ped no local (OnPlayerLoaded pode ter mexido), ainda oculto.
+        teleportPed(cam.target.x, cam.target.y, cam.target.z, cam.target.w, false)
+        SetEntityInvincible(cache.ped, false)
+
+        -- 3. Câmera SAI da 1ª pessoa até a 3ª pessoa (sem fade). updateEmerge revela
+        --    o ped no meio do movimento.
+        cam.emergeRevealed = false
+        cam.emergeStart = GetGameTimer()
+        cam.mode = 'emerge'
+        local dur = e.duration or 1500
+        while cam.mode == 'emerge' and (GetGameTimer() - cam.emergeStart) < dur do Wait(0) end
+
+        -- 4. Blend pro gameplay cam e entrega o controle. Para os loops ANTES do
+        --    blend pra o render loop não brigar com a câmera de gameplay.
+        cam.mode = nil
+        isNuiOpen = false
+        setCustomHudHidden(false)
+        FreezeEntityPosition(cache.ped, false)
+        RenderScriptCams(false, true, e.blend or 800, true, true)
+        Wait((e.blend or 800) + 50)
+        if previewCam and DoesCamExist(previewCam) then
+            DestroyCam(previewCam, false)
+            previewCam = nil
+        end
+        ClearFocus()
+
+        finishSpawn()
+    end)
+end
+
 RegisterNUICallback('confirmSpawn', function(_, cb)
     if not selectedSpawn or not selectedSpawn.coords then
         print('[mri_Qspawn] ERRO: Nenhum spawn selecionado ao confirmar')
@@ -585,49 +721,7 @@ RegisterNUICallback('confirmSpawn', function(_, cb)
 
     debug(string.format('[mri_Qspawn] Confirmando spawn: %s', spawnData.label or 'sem label'))
     playUiSound('confirm')
-
-    startDescend(function()
-        local spawnInfo = spawnData
-        DoScreenFadeOut(500)
-        while not IsScreenFadedOut() do Wait(0) end
-
-        closeSpawnUI()
-        selectedSpawn = nil
-        selectedSpawnIndex = nil
-
-        FreezeEntityPosition(cache.ped, false)
-        SetEntityVisible(cache.ped, true, false)
-        SetEntityInvincible(cache.ped, false)
-
-        if spawnInfo and spawnInfo.propertyId then
-            TriggerServerEvent('ps-housing:server:enterProperty', tostring(spawnInfo.propertyId), 'spawn')
-        elseif spawnInfo and spawnInfo.label == 'last_location' then
-            if QBX and QBX.PlayerData and QBX.PlayerData.metadata then
-                local insideMeta = QBX.PlayerData.metadata["inside"]
-                if insideMeta and insideMeta.property_id then
-                    TriggerServerEvent('ps-housing:server:enterProperty', tostring(insideMeta.property_id))
-                end
-            end
-        end
-
-        TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
-        TriggerEvent('QBCore:Client:OnPlayerLoaded')
-
-        -- illenium-appearance reaplica o ped no OnPlayerLoaded; hold extra esconde o flick.
-        Wait(1000)
-
-        DoScreenFadeIn(500)
-        Wait(500)
-
-        playSimpleSpawnAnimation()
-
-        if GetResourceState('mri_Qmultichar'):find('start') then
-            TriggerServerEvent('mri_Qmultichar:server:setBucket', 0)
-        end
-
-        TriggerServerEvent('qbx_spawn:server:spawn')
-        debug('[mri_Qspawn] Spawn completado')
-    end)
+    startEmerge(spawnData)
 
     cb({ success = true })
 end)

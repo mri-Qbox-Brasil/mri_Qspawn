@@ -21,6 +21,15 @@
     "fade": 500
   },
 
+  "emerge": {
+    "settle": 900,
+    "duration": 1500,
+    "distance": 4.0,
+    "height": 0.6,
+    "pitch": -3.0,
+    "blend": 800
+  },
+
   "sound": {
     "enabled": true
   },
