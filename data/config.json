@@ -1,24 +1,41 @@
 {
   "debug": false,
   "defaultSpawnIconColor": "#FFFFFF",
-  "transitionFadeDuration": 250,
-  "cinematicDuration": 6000,
-  "zoomDuration": 1800,
-  "cinematicShot": {
-    "startOffsetY": 200.0,
-    "startOffsetZ": 400.0,
-    "startFov": 65.0,
-    "endOffsetY": 6.0,
-    "endOffsetZ": 2.0,
-    "endFov": 40.0
+  "selectOnFirstSpawn": false,
+  "showWorldLabels": false,
+
+  "presence": {
+    "eyeHeight": 1.6,
+    "fov": 50.0,
+    "sway": 1.0,
+    "pitch": 0.0
   },
-  "spawnAnimations": [
-    "WORLD_HUMAN_STAND_IMPATIENT",
-    "WORLD_HUMAN_SMOKING",
-    "WORLD_HUMAN_HANG_OUT_STREET",
-    "WORLD_HUMAN_STAND_MOBILE",
-    "WORLD_HUMAN_CLIPBOARD"
-  ],
-  "spawnAnimationDuration": 3000,
-  "selectOnFirstSpawn": false
+
+  "blink": {
+    "out": 90,
+    "in": 150,
+    "stream": 1500
+  },
+
+  "confirm": {
+    "fade": 500
+  },
+
+  "sound": {
+    "enabled": true
+  },
+
+  "letterbox": {
+    "enabled": false,
+    "size": 11.0
+  },
+
+  "postfx": {
+    "dof": false,
+    "grain": true,
+    "vignette": true
+  },
+
+  "spawnAnimations": [],
+  "spawnAnimationDuration": 0
 }

@@ -68,8 +68,20 @@ local hasJsSignaledReady = false -- ack-only: marca que o JS realmente confirmou
 local hasFallbackFired = false   -- distingue "fallback tentou" de "JS confirmou" — sem isso, race entre fallback e mount perdia o `open` (fallback enviava antes do JS escutar e travava o re-send no nuiReady)
 local jsHasMounted = false -- React envia nuiReady no mount; usado pra evitar SendNUIMessage antes da UI escutar.
 
-local buildCinematicShots, startCinematic
-local currentCinematicTarget
+-- Controlador de câmera — PRESENÇA em 1ª pessoa. O jogador "está" no local,
+-- em primeira pessoa (câmera na altura dos olhos, olhando pro heading do spawn),
+-- com um balanço idle sutil (respiração). Trocar de local = "piscar" (match-cut:
+-- fade-out rápido → reposiciona → fade-in). Forward-declarado aqui porque
+-- openSpawnUI/selectSpawn/confirmSpawn (acima) precisam chamar.
+local createCam, startCameraLoop, requestShowLocation, startDescend
+local resolveGroundZ, teleportPed, setupShot
+local cam = {
+    mode = nil,        -- 'presence'
+    target = nil,      -- { x, y, z=groundZ, w } spawn corrente
+    eyeZ = 0.0,        -- altura dos olhos (groundZ + presence.eyeHeight)
+    busy = false,      -- true durante o "piscar" (troca de local)
+    pendingCoords = nil,
+}
 
 -- Aceita vec3/vec4, {x,y,z,w} e {[1],[2],[3],[4]}.
 local function getCoordsValues(coords)
@@ -96,25 +108,33 @@ local function getCoordsValues(coords)
     return nil, nil, nil, nil
 end
 
-local function setupAerialCamera(cx, cy, cz, kf)
+-- Cria a script cam já ativa. O render loop assume o controle no frame seguinte,
+-- então os params iniciais são irrelevantes (só precisam existir). Depth-of-field
+-- shallow é aplicado aqui e "acordado" por frame no loop via SetUseHiDof().
+createCam = function(cx, cy, cz)
     -- qbx_core multichar deixa a preview cam dele ativa quando dispara chooseSpawn;
     -- sem esse reset a nossa não renderiza.
     RenderScriptCams(false, false, 0, true, true)
     DestroyAllCams(true)
 
-    SetFocusPosAndVel(cx, cy, cz, 0.0, 0.0, 0.0)
-
     previewCam = CreateCamWithParams(
         'DEFAULT_SCRIPTED_CAMERA',
-        cx + kf.dx, cy + kf.dy, cz + kf.dz,
-        kf.pitch, kf.roll or 0.0, kf.yaw,
-        kf.fov,
+        cx, cy, cz + 100.0,
+        0.0, 0.0, 0.0,
+        55.0,
         false,
         0
     )
 
+    if config.postfx and config.postfx.dof then
+        SetCamUseShallowDofMode(previewCam, true)
+        SetCamNearDof(previewCam, 6.0)
+        SetCamFarDof(previewCam, 48.0)
+        SetCamDofStrength(previewCam, 1.0)
+    end
+
     SetCamActive(previewCam, true)
-    RenderScriptCams(true, false, 1, true, true)
+    RenderScriptCams(true, false, 0, true, true)
 end
 
 local function stopCamera()
@@ -138,9 +158,7 @@ end
 local function setupAerialMap()
     CreateThread(function()
         while isNuiOpen and DoesCamExist(previewCam) do
-            HideHudComponentThisFrame(6) -- Vehicle Name
-            HideHudComponentThisFrame(7) -- Area Name
-            HideHudComponentThisFrame(9) -- Vehicle Class
+            HideHudAndRadarThisFrame() -- some todo o HUD/minimapa do jogo
             Wait(0)
         end
     end)
@@ -171,20 +189,74 @@ end
 -- Z final pra cam math poder mirar na altura real do ped. Quando esta dentro
 -- de MLO carrega o interior antes e mantem o Z original (interior tem floor
 -- proprio, ground exterior nao se aplica).
-local function placePedAtGround(x, y, z, w)
-    local insideInterior = loadInteriorIfPresent(x, y, z)
+-- Resolve o Z do chão sem mover o ped (usado pra mirar a câmera na altura real).
+-- Dentro de MLO mantém o Z original (interior tem floor próprio). Caller deve ter
+-- feito SetFocusPosAndVel + Wait pro terreno streamar antes.
+resolveGroundZ = function(x, y, z)
+    if loadInteriorIfPresent(x, y, z) then return z end
+    local found, groundZ = GetGroundZFor_3dCoord(x, y, z + 5.0, false)
+    if found and groundZ > 0.0 then return groundZ end
+    return z
+end
 
-    if not insideInterior then
-        local found, groundZ = GetGroundZFor_3dCoord(x, y, z + 5.0, false)
-        if found and groundZ > 0.0 then z = groundZ end
-    end
-
+-- Teleporta o ped (congelado/invencível) pra coord. `visible` controla se ele
+-- aparece — durante o voo entre spawns fica invisível pra não "piscar" no ar.
+teleportPed = function(x, y, z, w, visible)
     SetEntityCoords(cache.ped, x, y, z, false, false, false, false)
     SetEntityHeading(cache.ped, w or 0.0)
     FreezeEntityPosition(cache.ped, true)
-    SetEntityVisible(cache.ped, true, false)
+    SetEntityVisible(cache.ped, visible ~= false, false)
     SetEntityInvincible(cache.ped, true)
+end
+
+local function placePedAtGround(x, y, z, w)
+    z = resolveGroundZ(x, y, z)
+    teleportPed(x, y, z, w, true)
     return z
+end
+
+-- Força a cena a carregar nas coords e ESPERA (com timeout) antes de revelar —
+-- evita ver o mapa "montando" ao trocar de local. Combina focus + collision +
+-- NewLoadScene (que streama LOD/props/texturas de verdade).
+local function streamAround(x, y, z, maxMs)
+    SetFocusPosAndVel(x, y, z, 0.0, 0.0, 0.0)
+    RequestCollisionAtCoord(x, y, z)
+    NewLoadSceneStartSphere(x, y, z, 80.0, 0)
+    local deadline = GetGameTimer() + (maxMs or 1500)
+    while not IsNewLoadSceneLoaded() and GetGameTimer() < deadline do
+        RequestCollisionAtCoord(x, y, z)
+        Wait(0)
+    end
+    NewLoadSceneStop()
+end
+
+-- Espera a colisão carregar sob o ped (chão sólido) antes de revelar, pra ele
+-- não cair no vazio no frame do fade-in.
+local function waitPedCollision(maxMs)
+    local deadline = GetGameTimer() + (maxMs or 500)
+    while not HasCollisionLoadedAroundEntity(cache.ped) and GetGameTimer() < deadline do
+        local pc = GetEntityCoords(cache.ped)
+        RequestCollisionAtCoord(pc.x, pc.y, pc.z)
+        Wait(0)
+    end
+end
+
+-- Sons de UI (frontend nativo do GTA — sem asset). Gated por config.sound.enabled.
+local UI_SOUNDS = {
+    blink   = { name = 'NAV_UP_DOWN', set = 'HUD_FRONTEND_DEFAULT_SOUNDSET' },
+    confirm = { name = 'SELECT',      set = 'HUD_FRONTEND_DEFAULT_SOUNDSET' },
+}
+local function playUiSound(kind)
+    if not (config.sound and config.sound.enabled ~= false) then return end
+    local s = UI_SOUNDS[kind]
+    if s then PlaySoundFrontend(-1, s.name, s.set, true) end
+end
+
+-- Esconde/mostra a HUD do servidor durante a seleção via o statebag `hideHud`
+-- do player (contrato de estado que o mri_Qhud e afins escutam). Desacoplado:
+-- não hardcoda resource; qualquer HUD que ouça esse bag reage. Replicado.
+local function setCustomHudHidden(hide)
+    LocalPlayer.state:set('hideHud', hide == true, true)
 end
 
 local function serializeCoords(coords)
@@ -232,15 +304,13 @@ local function openSpawnUI()
         return
     end
 
-    -- Garante config hidratado ANTES de qualquer leitura (buildCinematicShots,
-    -- durações). O caminho chooseSpawn→openSpawnUI não passa pela thread de boot;
-    -- sem isso, um spawn muito cedo leria config vazio e crasharia.
-    ensureConfig()
+    ensureConfig() -- garante config hidratado (labels/postfx/câmera dependem dele)
 
     isNuiOpen = true
     hasJsSignaledReady = false
 
     managePlayer()
+    setCustomHudHidden(true) -- esconde a HUD do servidor enquanto seleciona o spawn
 
     local fx, fy, fz, fw = getCoordsValues(spawns[1].coords)
     if not (fx and fy and fz) then
@@ -251,42 +321,47 @@ local function openSpawnUI()
     DoScreenFadeOut(150)
     while not IsScreenFadedOut() do Wait(0) end
 
-    SetFocusPosAndVel(fx, fy, fz, 0.0, 0.0, 0.0)
-    Wait(150) -- Terreno streamar antes do ground detect.
+    -- Carrega o mundo no primeiro local antes de revelar.
+    streamAround(fx, fy, fz, (config.blink and config.blink.stream) or 1500)
 
-    fz = placePedAtGround(fx, fy, fz, fw)
+    -- Ped fica ESCONDIDO durante a seleção (1ª pessoa: a câmera está nos olhos
+    -- dele). Posicionado no local pra o confirmar spawnar no lugar certo.
+    fz = resolveGroundZ(fx, fy, fz)
+    teleportPed(fx, fy, fz, fw, false)
+    waitPedCollision(500)
 
-    local kf = buildCinematicShots(fx, fy, fz, fw)[1].from
-    setupAerialCamera(fx, fy, fz, kf)
+    -- Estado inicial: presença no primeiro local.
+    cam.pendingCoords = nil
+    cam.busy = false
+    setupShot(fx, fy, fz, fw)
+    cam.mode = 'presence'
+
+    createCam(fx, fy, fz)
     setupAerialMap()
-    Waypoints.createForSpawns(spawns, getCoordsValues, getTranslatedLabel)
+    if config.showWorldLabels then
+        Waypoints.createForSpawns(spawns, getCoordsValues, getTranslatedLabel)
+    end
+    startCameraLoop()
 
-    -- DUIs do waypoint carregam async (load ack via polling); sem esse hold
-    -- o fade-in revela elas em estado "vazio" e gera flick no primeiro frame.
-    Wait(500)
+    -- Segura antes do fade-in pra câmera renderizar o primeiro frame da chegada
+    -- (e, com labels ligados, esperar as DUIs carregarem e evitar flick).
+    Wait(config.showWorldLabels and 500 or 200)
     DoScreenFadeIn(400)
     while IsScreenFadingIn() do Wait(0) end
 
     SetNuiFocus(true, true)
-    startCinematic(fx, fy, fz, fw)
 
     if jsHasMounted then
-        -- React já montou numa sessão anterior e continua escutando: entrega o
-        -- open agora e marca como confirmado. Sem isso, o fallback abaixo (que
-        -- depende de hasJsSignaledReady, só setado via nuiReady no mount —
-        -- disparado uma única vez) dispararia aos 4s em TODA sessão a partir da
-        -- 2ª, re-enviando 'open' e resetando a seleção do jogador pro spawns[1].
         sendOpenMessage()
-        hasJsSignaledReady = true
     else
-        -- Primeira abertura, antes do mount do React: espera o nuiReady ou força
-        -- o envio após o timeout.
+        -- React ainda não montou (race só no primeiro load do resource): re-envia
+        -- quando montar (via nuiReady) ou força após timeout. Em aberturas normais
+        -- jsHasMounted já é true e nem entra aqui.
         CreateThread(function()
-            local timeout = 4000
             local start = GetGameTimer()
-            while isNuiOpen and not hasJsSignaledReady do
-                if GetGameTimer() - start > timeout then
-                    print('[mri_Qspawn] AVISO: JS demorou demais ou não carregou. Forçando abertura via fallback...')
+            while isNuiOpen and not jsHasMounted do
+                if GetGameTimer() - start > 8000 then
+                    debug('[mri_Qspawn] React demorou pra montar; forçando abertura via fallback.')
                     hasFallbackFired = true
                     sendOpenMessage()
                     break
@@ -310,6 +385,11 @@ function sendOpenMessage()
         accentColor = accentColor,
         backgroundColor = backgroundColor,
         locale = GetConvar('ox:locale', 'en'),
+        ui = {
+            letterbox = config.letterbox,
+            vignette = not (config.postfx and config.postfx.vignette == false),
+            grain = not (config.postfx and config.postfx.grain == false),
+        },
     })
 
     if #spawns > 0 then
@@ -318,26 +398,19 @@ function sendOpenMessage()
     end
 end
 
-local isTransitioning = false
-local pendingTransitionTarget = nil
-local cinematicThread = nil
-
-local function stopCinematic()
-    cinematicThread = nil
-    currentCinematicTarget = nil
-end
-
 local function closeSpawnUI()
     if not isNuiOpen then return end
 
     isNuiOpen = false
     selectedSpawn = nil
     selectedSpawnIndex = nil
-    pendingTransitionTarget = nil
-    stopCinematic()
+    cam.mode = nil
+    cam.busy = false
+    cam.pendingCoords = nil
     Waypoints.removeAll()
     SetNuiFocus(false, false)
     stopCamera()
+    setCustomHudHidden(false) -- restaura a HUD do servidor
 
     SendNUIMessage({
         action = 'close',
@@ -353,184 +426,100 @@ local function computeLookRotation(camX, camY, camZ, tgtX, tgtY, tgtZ)
     return pitch, yaw
 end
 
-local function applyKeyframe(kf, cx, cy, cz)
-    SetCamCoord(previewCam, cx + kf.dx, cy + kf.dy, cz + kf.dz)
-    SetCamRot(previewCam, kf.pitch, kf.roll or 0.0, kf.yaw, 0)
-    SetCamFov(previewCam, kf.fov)
+-- ============================================================
+-- Motor de câmera — PRESENÇA em 1ª pessoa (+ "piscar" / match-cut)
+--
+-- O jogador ESTÁ no local, em primeira pessoa (câmera nos olhos, olhando pro
+-- heading do spawn), com um balanço idle sutil (respiração). Trocar de local =
+-- "piscar": fade-out rápido → reposiciona/streama → fade-in. Sem menu, sem
+-- deslocamento de câmera → zero enjoo. O ped fica escondido (a câmera está nos
+-- olhos dele) mas posicionado, pra o confirmar spawnar no lugar certo.
+-- ============================================================
+
+-- Define a presença no local: alvo + altura dos olhos. `gz` = Z do chão resolvido.
+setupShot = function(tx, ty, gz, w)
+    cam.target = { x = tx, y = ty, z = gz, w = w }
+    cam.eyeZ = gz + ((config.presence or {}).eyeHeight or 1.6)
 end
 
--- Pitch/yaw recomputados nas duas pontas pra manter o spawn centralizado durante
--- toda a aproximação (sem isso a cam derivava do alvo conforme se aproximava).
--- offsetY = distância à frente do ped; rotacionada pelo heading pra cam ficar
--- sempre em frente (ped olha pra cam) independente do `w` do spawn.
-function buildCinematicShots(cx, cy, cz, heading)
-    -- Defaults inline: se config.cinematicShot vier ausente (JSON corrompido/
-    -- deletado ou save parcial da UI), cai nos padrões em vez de crashar.
-    local s = config.cinematicShot or {}
-    local fwdStart = s.startOffsetY or 200.0
-    local fwdEnd   = s.endOffsetY or 6.0
-    local h = math.rad(heading or 0.0)
-    local sinH, cosH = math.sin(h), math.cos(h)
+-- 1ª pessoa: câmera nos olhos, olhando pro heading, com respiração sutil (sway).
+local function updatePresence()
+    local p = config.presence or {}
+    local t = cam.target
+    if not t then return end
+    local sway = p.sway or 1.0
+    local now = GetGameTimer() / 1000.0
 
-    local startX, startY = cx - sinH * fwdStart, cy + cosH * fwdStart
-    local endX,   endY   = cx - sinH * fwdEnd,   cy + cosH * fwdEnd
-    local startZ = cz + (s.startOffsetZ or 32.0)
-    local endZ   = cz + (s.endOffsetZ   or  9.0)
-    local startFov = s.startFov or 65.0
-    local endFov   = s.endFov   or 40.0
-    local tgtZ = cz + 1.0
+    local swX  = math.sin(now * 0.7)  * 0.010 * sway
+    local swY  = math.cos(now * 0.9)  * 0.010 * sway
+    local bobZ = math.sin(now * 1.1)  * 0.012 * sway
+    local yawS = math.sin(now * 0.5)  * 0.35  * sway -- graus
+    local pitS = math.sin(now * 0.65) * 0.25  * sway -- graus
 
-    local startPitch, startYaw = computeLookRotation(startX, startY, startZ, cx, cy, tgtZ)
-    local endPitch,   endYaw   = computeLookRotation(endX,   endY,   endZ,   cx, cy, tgtZ)
-
-    return {
-        {
-            duration = config.cinematicDuration or 6000, linear = false,
-            from = { dx = startX - cx, dy = startY - cy, dz = startZ - cz,
-                     pitch = startPitch, roll = 0.0, yaw = startYaw, fov = startFov },
-            to   = { dx = endX - cx,   dy = endY - cy,   dz = endZ - cz,
-                     pitch = endPitch,  roll = 0.0, yaw = endYaw,   fov = endFov },
-        },
-    }
+    SetCamCoord(previewCam, t.x + swX, t.y + swY, cam.eyeZ + bobZ)
+    SetCamRot(previewCam, (p.pitch or 0.0) + pitS, 0.0, (t.w or 0.0) + yawS, 0)
+    SetCamFov(previewCam, p.fov or 50.0)
 end
 
--- `shot.linear = true` desativa o easing; padrão usa ease in/out cúbico.
-local function runShot(shot, cx, cy, cz, alive)
-    local segStart = GetGameTimer()
-    local f, to = shot.from, shot.to
-    local linear = shot.linear == true
-    while alive() do
-        local progress = math.min((GetGameTimer() - segStart) / shot.duration, 1.0)
-        local t = linear and progress
-            or (progress < 0.5 and 4 * progress * progress * progress
-                or 1 - math.pow(-2 * progress + 2, 3) / 2)
-
-        SetCamCoord(previewCam,
-            cx + f.dx + (to.dx - f.dx) * t,
-            cy + f.dy + (to.dy - f.dy) * t,
-            cz + f.dz + (to.dz - f.dz) * t)
-        SetCamRot(previewCam,
-            f.pitch + (to.pitch - f.pitch) * t,
-            (f.roll or 0.0) + ((to.roll or 0.0) - (f.roll or 0.0)) * t,
-            f.yaw + (to.yaw - f.yaw) * t,
-            0)
-        SetCamFov(previewCam, f.fov + (to.fov - f.fov) * t)
-
-        if progress >= 1.0 then break end
-        Wait(0)
-    end
-end
-
-function startCinematic(cx, cy, cz, heading)
-    stopCinematic()
-    local thisThread = {}
-    cinematicThread = thisThread
-    currentCinematicTarget = { x = cx, y = cy, z = cz }
-
-    CreateThread(function()
-        local shot = buildCinematicShots(cx, cy, cz, heading)[1]
-        local function alive()
-            return cinematicThread == thisThread and DoesCamExist(previewCam)
-        end
-        if alive() then runShot(shot, cx, cy, cz, alive) end
-    end)
-end
-
--- Cliques durante uma transição armazenam o último target em pendingTransitionTarget
--- e são processados assim que a transição atual termina.
-local function moveCameraToLocation(coords)
-    if not previewCam or not DoesCamExist(previewCam) then return end
-
+-- Trocar de local = "piscar" (match-cut): fade-out rápido → reposiciona o ped
+-- (escondido) e streama → nova presença → fade-in. Enfileira o último pedido se
+-- já estiver piscando.
+requestShowLocation = function(coords)
+    if cam.mode ~= 'presence' then return end
     local x, y, z, w = getCoordsValues(coords)
     if not (x and y and z) then return end
-
-    -- Auto-select reentrante após openSpawnUI ou clique no spawn já selecionado.
-    if currentCinematicTarget then
-        local ddx = currentCinematicTarget.x - x
-        local ddy = currentCinematicTarget.y - y
-        local ddz = currentCinematicTarget.z - z
-        if ddx * ddx + ddy * ddy + ddz * ddz < 1.0 then return end
+    if cam.target then
+        local dx, dy, dz = cam.target.x - x, cam.target.y - y, cam.target.z - z
+        if dx * dx + dy * dy + dz * dz < 1.0 then return end -- dedup
     end
+    if cam.busy then cam.pendingCoords = coords; return end
 
-    if isTransitioning then
-        pendingTransitionTarget = { x = x, y = y, z = z, w = w }
-        return
-    end
-
-    isTransitioning = true
+    cam.busy = true
+    playUiSound('blink')
     CreateThread(function()
-        local fadeDuration = config.transitionFadeDuration or 250
-        local tx, ty, tz, tw = x, y, z, w
+        local b = config.blink or {}
+        DoScreenFadeOut(b.out or 90)
+        while not IsScreenFadedOut() do Wait(0) end
 
-        while tx do
-            stopCinematic()
-            DoScreenFadeOut(fadeDuration)
-            while not IsScreenFadedOut() do Wait(0) end
-
-            SetFocusPosAndVel(tx, ty, tz, 0.0, 0.0, 0.0)
-            Wait(100) -- Terreno streamar antes do ground detect.
-
-            tz = placePedAtGround(tx, ty, tz, tw)
-
-            applyKeyframe(buildCinematicShots(tx, ty, tz, tw)[1].from, tx, ty, tz)
-
-            DoScreenFadeIn(fadeDuration)
-            while IsScreenFadingIn() do Wait(0) end
-
-            startCinematic(tx, ty, tz, tw)
-
-            local pending = pendingTransitionTarget
-            pendingTransitionTarget = nil
-            if pending then
-                tx, ty, tz, tw = pending.x, pending.y, pending.z, pending.w
-            else
-                tx = nil
-            end
+        -- Carrega o mundo no destino ANTES de revelar (fica preto durante o load,
+        -- não mostrando o mapa montar). Sai assim que carrega (perto = rápido).
+        streamAround(x, y, z, b.stream or 1500)
+        if not isNuiOpen or not previewCam or not DoesCamExist(previewCam) then
+            cam.busy = false; return
         end
-        isTransitioning = false
+
+        local gz = resolveGroundZ(x, y, z)
+        teleportPed(x, y, gz, w, false) -- ped escondido no novo local
+        waitPedCollision(500)
+        setupShot(x, y, gz, w)
+        updatePresence() -- posiciona a câmera já no primeiro frame
+
+        DoScreenFadeIn(b['in'] or 150)
+        cam.busy = false
+
+        local pending = cam.pendingCoords
+        cam.pendingCoords = nil
+        if pending then requestShowLocation(pending) end
     end)
 end
 
-local function zoomCameraToPlayer(coords, spawnData, duration, callback)
-    duration = duration or config.zoomDuration or 1800
-
-    if not previewCam or not DoesCamExist(previewCam) then
-        print('[mri_Qspawn] ERRO: Câmera não existe para zoomCameraToPlayer')
-        if callback then callback() end
-        return
-    end
-
-    local x, y, z, w = getCoordsValues(coords)
-    if not (x and y and z) then
-        print('[mri_Qspawn] ERRO: Coordenadas inválidas para zoomCameraToPlayer')
-        if callback then callback() end
-        return
-    end
-
-    -- Remove DUI markers: em close range clipam com o ped/cam.
-    Waypoints.removeAll()
-    SetFocusPosAndVel(x, y, z, 0.0, 0.0, 0.0)
-
+-- "Ficar" (confirmar). Sem movimento de câmera — só garante estado estável (não
+-- piscando) e chama onDone, que faz o fade final + spawna.
+startDescend = function(onDone)
     CreateThread(function()
-        stopCinematic()
+        local deadline = GetGameTimer() + 6000
+        while isNuiOpen and cam.busy and GetGameTimer() < deadline do Wait(50) end
+        if onDone then onDone() end
+    end)
+end
 
-        local pedZ = placePedAtGround(x, y, z, w)
-
-        -- Em frente ao ped a 2m + 4m de altura — continua a aproximação heading-relative.
-        local rad = math.rad(w or 0.0)
-        local endX, endY = x - math.sin(rad) * 2.0, y + math.cos(rad) * 2.0
-        local endZ = pedZ + 4.0
-        local pitch, yaw = computeLookRotation(endX, endY, endZ, x, y, pedZ + 1.0)
-
-        -- graphType 0 = cubic ease (snappy no início, soft no final).
-        SetCamParams(previewCam,
-            endX, endY, endZ,
-            pitch, 0.0, yaw,
-            32.0,
-            duration, 0, 0, 0)
-        Wait(duration)
-
-        if callback then callback(spawnData) end
+startCameraLoop = function()
+    CreateThread(function()
+        while isNuiOpen and previewCam and DoesCamExist(previewCam) do
+            if cam.mode == 'presence' then updatePresence() end
+            if config.postfx and config.postfx.dof then SetUseHiDof() end
+            Wait(0)
+        end
     end)
 end
 
@@ -560,7 +549,7 @@ RegisterNUICallback('selectSpawn', function(data, cb)
 
     debug(string.format('[mri_Qspawn] Spawn selecionado: %s (índice %d)', spawnData.label or 'sem label', spawnIndex))
 
-    moveCameraToLocation(spawnData.coords)
+    requestShowLocation(spawnData.coords)
     cb({ success = true })
 end)
 
@@ -595,8 +584,10 @@ RegisterNUICallback('confirmSpawn', function(_, cb)
     }
 
     debug(string.format('[mri_Qspawn] Confirmando spawn: %s', spawnData.label or 'sem label'))
+    playUiSound('confirm')
 
-    zoomCameraToPlayer(spawnData.coords, spawnData, config.zoomDuration, function(spawnInfo)
+    startDescend(function()
+        local spawnInfo = spawnData
         DoScreenFadeOut(500)
         while not IsScreenFadedOut() do Wait(0) end
 
@@ -932,6 +923,7 @@ AddEventHandler('onResourceStop', function(resource)
     if isNuiOpen or isAdminPanelOpen then
         SetNuiFocus(false, false)
     end
+    if isNuiOpen then setCustomHudHidden(false) end
     if previewCam and DoesCamExist(previewCam) then
         SetCamActive(previewCam, false)
         RenderScriptCams(false, false, 0, true, true)
