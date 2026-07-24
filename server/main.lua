@@ -32,37 +32,28 @@ end)
 -- Se Qadmin nao tiver rodando no server, o pcall protege e o painel continua
 -- acessivel via /adminspawn standalone normalmente. Manifest shape espelha
 -- web/src/plugin/types.ts (drift control manual).
-local function registerPlugin()
+local function doRegister()
     if GetResourceState('mri_Qadmin') ~= 'started' then return end
-    local ok, result = pcall(function()
-        return exports['mri_Qadmin']:RegisterPlugin({
-            id = 'spawns',
-            label = 'Spawns',
-            icon = 'map-pin',
-            resource = 'mri_Qspawn',
-            htmlPath = 'html/index.html',
-            requiredPerms = { 'mri_Qspawn.admin', 'command' },
-            description = 'CRUD de spawns iniciais do servidor',
-        })
-    end)
-    if not ok or result == false then
-        print(('[mri_Qspawn] Falha ao registrar plugin no mri_Qadmin: %s'):format(tostring(result)))
-    end
+    exports['mri_Qadmin']:RegisterPlugin({
+        id = 'spawns',
+        label = 'Spawns',
+        icon = 'map-pin',
+        resource = 'mri_Qspawn',
+        htmlPath = 'html/index.html',
+        requiredPerms = { 'mri_Qspawn.admin', 'command' },
+        description = 'CRUD de spawns iniciais do servidor',
+    })
 end
 
-CreateThread(function()
-    local deadline = GetGameTimer() + 10000
-    while GetResourceState('mri_Qadmin') ~= 'started' and GetGameTimer() < deadline do
-        Wait(200)
-    end
-    registerPlugin()
+-- Qadmin inicia/reinicia → re-registra automaticamente
+AddEventHandler('onServerResourceStart', function(resourceName)
+    if resourceName == 'mri_Qadmin' then doRegister() end
 end)
 
-AddEventHandler('onResourceStart', function(resourceName)
-    if resourceName == 'mri_Qadmin' then
-        Wait(500) -- aguarda exports ficarem disponíveis
-        registerPlugin()
-    end
+-- Plugin inicia com Qadmin já rodando → registra imediatamente
+CreateThread(function()
+    Wait(0)
+    doRegister()
 end)
 
 -- Tabela local de controle de primeiro-spawn (selectOnFirstSpawn). Substitui
