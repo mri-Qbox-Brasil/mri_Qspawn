@@ -34,6 +34,25 @@ end
 local accentColor = GetConvar('mri:color', '#00E699')
 local backgroundColor = GetConvar('mri:backgroundColor', '')
 
+-- Estilo visual do painel /uiconfig do ox_lib (radius, fonte, tema glass, cores
+-- de status, dims), lido direto do ox_lib pra a UI standalone herdar a cara do
+-- servidor (nao so quando embedado no Qadmin). Cacheado; atualizado pelo evento
+-- ox_lib:uiConfigChanged. nil se o ox_lib nao estiver rodando.
+local oxLibUiConfig = nil
+local function fetchOxLibUiConfig()
+    if GetResourceState('ox_lib') ~= 'started' then return end
+    local ok, cfg = pcall(function() return lib.callback.await('ox_lib:getUiConfig', false) end)
+    if ok then oxLibUiConfig = cfg end
+end
+fetchOxLibUiConfig()
+
+-- /uiconfig mudou (admin salvou no painel do ox_lib) — recacheia e reaplica na
+-- NUI standalone sem precisar reabrir.
+RegisterNetEvent('ox_lib:uiConfigChanged', function(cfg)
+    oxLibUiConfig = cfg
+    SendNUIMessage({ action = 'updateUiConfig', uiConfig = cfg })
+end)
+
 -- Log gated por config.debug; usar print() apenas para erros reais.
 local function debug(...)
     if config.debug then print(...) end
@@ -384,6 +403,7 @@ function sendOpenMessage()
         spawns = serializeSpawns(spawns),
         accentColor = accentColor,
         backgroundColor = backgroundColor,
+        uiConfig = oxLibUiConfig,
         locale = GetConvar('ox:locale', 'en'),
         ui = {
             letterbox = config.letterbox,
@@ -926,6 +946,7 @@ RegisterCommand('adminspawn', function()
         spawns = cachedDataSpawns or {},
         accentColor = accentColor,
         backgroundColor = backgroundColor,
+        uiConfig = oxLibUiConfig,
         locale = GetConvar('ox:locale', 'en'),
     })
 end, false)
