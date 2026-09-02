@@ -155,10 +155,13 @@ createCam = function(cx, cy, cz)
     RenderScriptCams(true, false, 0, true, true)
 end
 
-local function stopCamera()
+---@param blendMs number|nil duracao do blend de volta pra camera do jogo.
+--- Use 0 quando outra script cam vai assumir logo em seguida (o blend de 1s
+--- so faz sentido quando devolvemos o controle pro jogador de verdade).
+local function stopCamera(blendMs)
     if previewCam and DoesCamExist(previewCam) then
         SetCamActive(previewCam, false)
-        RenderScriptCams(false, true, 1000, true, true)
+        RenderScriptCams(false, true, blendMs or 1000, true, true)
         DestroyCam(previewCam, true)
         previewCam = nil
     end
@@ -330,8 +333,11 @@ local function openSpawnUI()
         fx, fy, fz, fw = pedPos.x, pedPos.y, pedPos.z, GetEntityHeading(cache.ped)
     end
 
-    DoScreenFadeOut(150)
-    while not IsScreenFadedOut() do Wait(0) end
+    -- Vindo do multichar a tela ja esta preta; refazer o fade so custa 150ms.
+    if not IsScreenFadedOut() then
+        DoScreenFadeOut(150)
+        while not IsScreenFadedOut() do Wait(0) end
+    end
 
     -- Carrega o mundo no primeiro local antes de revelar.
     streamAround(fx, fy, fz, (config.blink and config.blink.stream) or 1500)
@@ -862,11 +868,12 @@ exports('chooseSpawn', function(citizenid)
     end
 
     SetNuiFocus(false, false) -- multichar pode deixar a NUI focada.
-    Wait(300)
 
+    -- Sem espera fixa aqui: a tela ja vem preta de quem chamou (multichar), e o
+    -- openSpawnUI logo abaixo garante o fade antes de mexer na cena. Os 300ms +
+    -- 200ms que havia eram chute — nao aguardavam nada verificavel.
     if previewCam and DoesCamExist(previewCam) then
-        stopCamera()
-        Wait(200)
+        stopCamera(0) -- o createCam do openSpawnUI assume a seguir
     end
 
     selectedSpawn = nil
