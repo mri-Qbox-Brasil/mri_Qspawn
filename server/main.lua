@@ -150,9 +150,17 @@ end)
 -- Aviso de conflito: mri_Qspawn SUBSTITUI o qbx_spawn (mesmos callbacks/evento).
 -- Se os dois rodarem juntos, o ox_lib registra handlers duplicados e as respostas
 -- colidem (query dupla, alreadySpawned/spawn ambíguos).
+--
+-- GetResourceState('qbx_spawn') NAO serve aqui: o nosso `provide 'qbx_spawn'`
+-- responde 'started' e o aviso dispararia contra nos mesmos. So o nome REAL
+-- aparece no GetResourceByFindIndex.
 CreateThread(function()
-    if GetResourceState('qbx_spawn') == 'started' then
-        print('[mri_Qspawn] ERRO: qbx_spawn está ATIVO — remova-o; os callbacks vão colidir com mri_Qspawn.')
+    for i = 0, GetNumResources() - 1 do
+        local name = GetResourceByFindIndex(i)
+        if name == 'qbx_spawn' and GetResourceState(name) == 'started' then
+            print('[mri_Qspawn] ERRO: qbx_spawn está ATIVO — remova-o; os callbacks vão colidir com mri_Qspawn.')
+            return
+        end
     end
 end)
 
