@@ -41,7 +41,7 @@ Sistema de spawn com NUI cinemática e markers 3D no mundo. Plug-and-play em ser
    ```
    ensure mri_Qspawn
    ```
-3. **Remova ou desabilite o `qbx_spawn`** — os dois recursos registram os mesmos callbacks (`qbx_spawn:server:getLastLocation`, `qbx_spawn:server:getHouses`, `qbx_spawn:server:alreadySpawned`) e não podem rodar juntos.
+3. **Remova ou desabilite o `qbx_spawn`** — os dois recursos registram os mesmos callbacks (`qbx_spawn:server:getLastLocation`, `qbx_spawn:server:getHouses`, `qbx_spawn:server:alreadySpawned`) e o mesmo evento `qbx_spawn:server:spawn`, então não podem rodar juntos. O `fxmanifest.lua` declara `provide 'qbx_spawn'` para assumir essa identidade.
 
 ---
 
@@ -123,44 +123,70 @@ As configurações ficam em `data/config.json` e podem ser editadas manualmente 
 {
   "debug": false,
   "defaultSpawnIconColor": "#FFFFFF",
-  "transitionFadeDuration": 250,
-  "cinematicDuration": 6000,
-  "zoomDuration": 1800,
-  "cinematicShot": {
-    "startOffsetY": 200.0,
-    "startOffsetZ": 400.0,
-    "startFov": 65.0,
-    "endOffsetY": 6.0,
-    "endOffsetZ": 2.0,
-    "endFov": 40.0
+  "selectOnFirstSpawn": false,
+  "showWorldLabels": false,
+
+  "presence": { "eyeHeight": 1.6, "fov": 50.0, "sway": 1.0, "pitch": 0.0 },
+  "blink": { "out": 90, "in": 150, "stream": 1500 },
+  "confirm": { "fade": 500 },
+  "emerge": {
+    "settle": 900, "duration": 1500, "distance": 4.0,
+    "height": 0.6, "pitch": -3.0, "blend": 800
   },
-  "spawnAnimations": [
-    "WORLD_HUMAN_STAND_IMPATIENT",
-    "WORLD_HUMAN_SMOKING",
-    "WORLD_HUMAN_HANG_OUT_STREET",
-    "WORLD_HUMAN_STAND_MOBILE",
-    "WORLD_HUMAN_CLIPBOARD"
-  ],
-  "spawnAnimationDuration": 3000,
-  "selectOnFirstSpawn": false
+
+  "sound": { "enabled": true },
+  "letterbox": { "enabled": false, "size": 11.0 },
+  "postfx": { "dof": false, "grain": true, "vignette": true },
+
+  "spawnAnimations": [],
+  "spawnAnimationDuration": 0
 }
 ```
 
+### Geral
+
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `debug` | bool | Ativa logs de diagnóstico no console F8 (fluxo open/close, fallback timeout) |
-| `defaultSpawnIconColor` | hex | Cor usada no marker 3D quando o spawn não define `color` próprio |
-| `transitionFadeDuration` | ms | Duração do fade-out/in ao trocar de spawn na seleção |
-| `cinematicDuration` | ms | Duração do shot cinemático aéreo ao abrir a tela de spawn |
-| `zoomDuration` | ms | Duração do push-in de câmera após confirmar o spawn |
-| `cinematicShot` | objeto | Offsets da câmera cinemática relativos ao ponto de spawn. `Y` = distância à frente, `Z` = altura, `Fov` = campo de visão |
-| `spawnAnimations` | array de strings | Scenarios do GTA V sorteados aleatoriamente ao chegar no destino. Aceita qualquer `WORLD_HUMAN_*` válido |
-| `spawnAnimationDuration` | ms | Tempo que o personagem fica na animação após spawnar |
-| `selectOnFirstSpawn` | bool | Quando `true`, a `last_location` é auto-selecionada apenas no primeiro spawn do personagem na sessão. Quando `false` (padrão), sempre auto-seleciona |
+| `debug` | bool | Ativa logs de diagnóstico no console F8 (fluxo open/close, timeouts) |
+| `defaultSpawnIconColor` | hex | Cor do marker 3D quando o spawn não define `color` próprio |
+| `selectOnFirstSpawn` | bool | Quando `true`, a tela de seleção é pulada se o personagem já spawnou nesta sessão. Quando `false` (padrão), a seleção aparece sempre |
+| `showWorldLabels` | bool | Exibe os nomes dos spawns como markers 3D no mundo durante a seleção |
+| `spawnAnimations` | array de strings | Scenarios do GTA V sorteados ao chegar no destino (`WORLD_HUMAN_*`). Vazio = sem animação |
+| `spawnAnimationDuration` | ms | Tempo na animação após spawnar. `0` desliga |
 
-### Comportamento do `cinematicShot`
+### Câmera
 
-A câmera começa em `startOffsetY` metros à frente do spawn e `startOffsetZ` metros de altura, e se aproxima até `endOffsetY` e `endOffsetZ` durante `cinematicDuration` ms. Pitch e yaw são calculados automaticamente para manter o personagem centralizado durante toda a aproximação.
+O seletor não usa câmera aérea: o jogador **está** no local, em primeira pessoa.
+Trocar de spawn é um "piscar" (fade rápido, reposiciona, volta), e confirmar faz
+a câmera recuar dos olhos para a terceira pessoa antes de devolver o controle.
+
+| Bloco | Campo | Tipo | Descrição |
+|---|---|---|---|
+| `presence` | `eyeHeight` | m | Altura da câmera acima do chão (olhos do personagem) |
+| | `fov` | graus | Campo de visão durante a seleção |
+| | `sway` | mult. | Intensidade do balanço idle (respiração). `0` deixa a câmera estática |
+| | `pitch` | graus | Inclinação vertical base |
+| `blink` | `out` | ms | Fade-out ao trocar de spawn |
+| | `in` | ms | Fade-in depois de reposicionar |
+| | `stream` | ms | Tempo máximo esperando o cenário carregar antes de revelar |
+| `confirm` | `fade` | ms | Fade usado quando o spawn cai dentro de casa/apartamento (o housing assume a câmera) |
+| `emerge` | `settle` | ms | Espera após o spawn antes de devolver o controle |
+| | `duration` | ms | Duração do recuo da câmera (1ª → 3ª pessoa) |
+| | `distance` | m | Distância final da câmera ao personagem |
+| | `height` | m | Altura final acima da linha dos olhos |
+| | `pitch` | graus | Inclinação final |
+| | `blend` | ms | Transição de volta para a câmera do jogo |
+
+### Apresentação
+
+| Bloco | Campo | Tipo | Descrição |
+|---|---|---|---|
+| `sound` | `enabled` | bool | Sons de UI (frontend nativo do GTA, sem asset) |
+| `letterbox` | `enabled` | bool | Barras cinematográficas na tela de seleção |
+| | `size` | % | Altura de cada barra, em porcentagem da tela |
+| `postfx` | `dof` | bool | Profundidade de campo (desfoca o fundo) |
+| | `grain` | bool | Granulação de filme |
+| | `vignette` | bool | Escurecimento nas bordas |
 
 ---
 
@@ -172,10 +198,13 @@ A cor de destaque (botões, bordas e elementos interativos da UI) é resolvida v
 setr mri:color "#00E699"
 ```
 
-- Se a convar estiver definida e for um hex válido (`#RRGGBB`), ela é usada.
+- Se a convar estiver definida e for um hex válido (`#RRGGBB` ou `#RRGGBBAA`), ela é usada. O alpha é aceito mas ignorado no theming.
 - Caso contrário, o padrão é `#00E699` (tema mri-ui-kit).
 - A convar é compartilhada com outros recursos da suite MRI — definir uma vez aplica em todos.
 - Alterações em runtime (via `setr` ou outro recurso que chame `SetConvar`) são propagadas imediatamente para todos os clientes sem restart.
+
+Há também `mri:backgroundColor`, opcional, que tinge o fundo da UI. Segue as
+mesmas regras; sem ela, o fundo fica no padrão do tema.
 
 ---
 

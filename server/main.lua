@@ -2,10 +2,15 @@
 -- Le sempre via GetSpawnConfig() pra pegar mutacoes em runtime (admin salvou
 -- na UI). Cache local seria stale.
 
-local HEX_PATTERN = '^#%x%x%x%x%x%x$'
+-- #RRGGBB ou #RRGGBBAA. O alpha e aceito e repassado; quem ignora e o
+-- hexToHslVar da NUI (theming HSL), nao a validacao. Lua nao tem alternancia
+-- em pattern, entao sao dois matches — %x?%x? aceitaria 7 digitos.
+local HEX_RGB = '^#%x%x%x%x%x%x$'
+local HEX_RGBA = '^#%x%x%x%x%x%x%x%x$'
 
 local function isValidHex(value)
-    return type(value) == 'string' and value:match(HEX_PATTERN) ~= nil
+    if type(value) ~= 'string' then return false end
+    return value:match(HEX_RGB) ~= nil or value:match(HEX_RGBA) ~= nil
 end
 
 local function resolveAccentColor()

@@ -82,7 +82,6 @@ local isNuiOpen = false
 local previewCam = nil
 local scaleform = nil
 local selectedSpawn = nil
-local selectedSpawnIndex = nil
 local hasJsSignaledReady = false -- ack-only: marca que o JS realmente confirmou recepcao
 local hasFallbackFired = false   -- distingue "fallback tentou" de "JS confirmou" — sem isso, race entre fallback e mount perdia o `open` (fallback enviava antes do JS escutar e travava o re-send no nuiReady)
 local jsHasMounted = false -- React envia nuiReady no mount; usado pra evitar SendNUIMessage antes da UI escutar.
@@ -226,12 +225,6 @@ teleportPed = function(x, y, z, w, visible)
     FreezeEntityPosition(cache.ped, true)
     SetEntityVisible(cache.ped, visible ~= false, false)
     SetEntityInvincible(cache.ped, true)
-end
-
-local function placePedAtGround(x, y, z, w)
-    z = resolveGroundZ(x, y, z)
-    teleportPed(x, y, z, w, true)
-    return z
 end
 
 -- Força a cena a carregar nas coords e ESPERA (com timeout) antes de revelar —
@@ -414,7 +407,6 @@ function sendOpenMessage()
 
     if #spawns > 0 then
         selectedSpawn = spawns[1]
-        selectedSpawnIndex = 1
     end
 end
 
@@ -423,7 +415,6 @@ local function closeSpawnUI()
 
     isNuiOpen = false
     selectedSpawn = nil
-    selectedSpawnIndex = nil
     cam.mode = nil
     cam.busy = false
     cam.pendingCoords = nil
@@ -435,15 +426,6 @@ local function closeSpawnUI()
     SendNUIMessage({
         action = 'close',
     })
-end
-
--- Convenção FiveM: yaw 0 = norte (+y), aumenta CCW vista de cima.
-local function computeLookRotation(camX, camY, camZ, tgtX, tgtY, tgtZ)
-    local dx, dy, dz = tgtX - camX, tgtY - camY, tgtZ - camZ
-    local horiz = math.sqrt(dx * dx + dy * dy)
-    local pitch = math.deg(math.atan2(dz, horiz))
-    local yaw   = math.deg(math.atan2(-dx, dy))
-    return pitch, yaw
 end
 
 -- ============================================================
@@ -459,15 +441,15 @@ end
 -- Define a presença no local: alvo + altura dos olhos. `gz` = Z do chão resolvido.
 setupShot = function(tx, ty, gz, w)
     cam.target = { x = tx, y = ty, z = gz, w = w }
-    cam.eyeZ = gz + ((config.presence or {}).eyeHeight or 1.6)
+    cam.eyeZ = gz + config.presence.eyeHeight
 end
 
 -- 1ª pessoa: câmera nos olhos, olhando pro heading, com respiração sutil (sway).
 local function updatePresence()
-    local p = config.presence or {}
+    local p = config.presence
     local t = cam.target
     if not t then return end
-    local sway = p.sway or 1.0
+    local sway = p.sway
     local now = GetGameTimer() / 1000.0
 
     local swX  = math.sin(now * 0.7)  * 0.010 * sway
@@ -477,8 +459,8 @@ local function updatePresence()
     local pitS = math.sin(now * 0.65) * 0.25  * sway -- graus
 
     SetCamCoord(previewCam, t.x + swX, t.y + swY, cam.eyeZ + bobZ)
-    SetCamRot(previewCam, (p.pitch or 0.0) + pitS, 0.0, (t.w or 0.0) + yawS, 0)
-    SetCamFov(previewCam, p.fov or 50.0)
+    SetCamRot(previewCam, p.pitch + pitS, 0.0, (t.w or 0.0) + yawS, 0)
+    SetCamFov(previewCam, p.fov)
 end
 
 -- Trocar de local = "piscar" (match-cut): fade-out rápido → reposiciona o ped
@@ -497,13 +479,13 @@ requestShowLocation = function(coords)
     cam.busy = true
     playUiSound('blink')
     CreateThread(function()
-        local b = config.blink or {}
-        DoScreenFadeOut(b.out or 90)
+        local b = config.blink
+        DoScreenFadeOut(b.out)
         while not IsScreenFadedOut() do Wait(0) end
 
         -- Carrega o mundo no destino ANTES de revelar (fica preto durante o load,
         -- não mostrando o mapa montar). Sai assim que carrega (perto = rápido).
-        streamAround(x, y, z, b.stream or 1500)
+        streamAround(x, y, z, b.stream)
         if not isNuiOpen or not previewCam or not DoesCamExist(previewCam) then
             cam.busy = false; return
         end
@@ -514,7 +496,7 @@ requestShowLocation = function(coords)
         setupShot(x, y, gz, w)
         updatePresence() -- posiciona a câmera já no primeiro frame
 
-        DoScreenFadeIn(b['in'] or 150)
+        DoScreenFadeIn(b['in'])
         cam.busy = false
 
         local pending = cam.pendingCoords
@@ -533,34 +515,34 @@ end
 -- mundo. O ped só aparece um pouco depois do início (quando a lente já saiu da
 -- cabeça). No fim, blend pro gameplay cam. Sem fade.
 local function updateEmerge()
-    local e = config.emerge or {}
-    local p = config.presence or {}
+    local e = config.emerge
+    local p = config.presence
     local t = cam.target
     if not t then return end
-    local prog = math.min((GetGameTimer() - cam.emergeStart) / (e.duration or 1500), 1.0)
+    local prog = math.min((GetGameTimer() - cam.emergeStart) / e.duration, 1.0)
     local tt = easeInOut(prog)
 
     -- Revela o ped só quando a lente JÁ SAIU da cabeça (distância real percorrida
     -- pra trás > ~0.45m), senão pisca o interior da cabeça no primeiro frame.
-    if not cam.emergeRevealed and tt * (e.distance or 4.0) > 0.45 then
+    if not cam.emergeRevealed and tt * e.distance > 0.45 then
         SetEntityVisible(cache.ped, true, false)
         cam.emergeRevealed = true
     end
 
     local h = math.rad(t.w or 0.0)
     local fwdX, fwdY = -math.sin(h), math.cos(h)
-    local ex = t.x - fwdX * (e.distance or 4.0)
-    local ey = t.y - fwdY * (e.distance or 4.0)
-    local ez = cam.eyeZ + (e.height or 0.6)
+    local ex = t.x - fwdX * e.distance
+    local ey = t.y - fwdY * e.distance
+    local ez = cam.eyeZ + e.height
 
     SetCamCoord(previewCam,
         t.x + (ex - t.x) * tt,
         t.y + (ey - t.y) * tt,
         cam.eyeZ + (ez - cam.eyeZ) * tt)
     SetCamRot(previewCam,
-        (p.pitch or 0.0) + ((e.pitch or -3.0) - (p.pitch or 0.0)) * tt,
+        p.pitch + (e.pitch - p.pitch) * tt,
         0.0, t.w or 0.0, 0)
-    SetCamFov(previewCam, p.fov or 50.0)
+    SetCamFov(previewCam, p.fov)
 end
 
 startCameraLoop = function()
@@ -596,7 +578,6 @@ RegisterNUICallback('selectSpawn', function(data, cb)
     end
 
     selectedSpawn = spawnData
-    selectedSpawnIndex = spawnIndex
 
     debug(string.format('[mri_Qspawn] Spawn selecionado: %s (índice %d)', spawnData.label or 'sem label', spawnIndex))
 
@@ -662,18 +643,18 @@ startEmerge = function(spawnData)
         while isNuiOpen and cam.busy and GetGameTimer() < deadline do Wait(50) end
         if not isNuiOpen or not previewCam or not DoesCamExist(previewCam) then return end
 
-        local e = config.emerge or {}
+        local e = config.emerge
 
         -- Fecha a NUI (a câmera continua nossa até o blend). isNuiOpen segue true
         -- pra o render loop e o hide-hud continuarem rodando durante o nascimento.
         selectedSpawn = nil
-        selectedSpawnIndex = nil
         SetNuiFocus(false, false)
         SendNUIMessage({ action = 'close' })
 
         if spawnEntersProperty(spawnData) then
             -- Cai dentro de casa: fade (o housing assume câmera/teleporte).
-            DoScreenFadeOut(400)
+            local fade = config.confirm.fade
+            DoScreenFadeOut(fade)
             while not IsScreenFadedOut() do Wait(0) end
             cam.mode = nil
             isNuiOpen = false
@@ -683,8 +664,8 @@ startEmerge = function(spawnData)
             SetEntityInvincible(cache.ped, false)
             setCustomHudHidden(false)
             triggerSpawnLoad(spawnData)
-            Wait(e.settle or 900)
-            DoScreenFadeIn(400)
+            Wait(e.settle)
+            DoScreenFadeIn(fade)
             Wait(300)
             finishSpawn()
             return
@@ -692,7 +673,7 @@ startEmerge = function(spawnData)
 
         -- 1. Carga com o ped ESCONDIDO (aparência reaplica oculta).
         triggerSpawnLoad(spawnData)
-        Wait(e.settle or 900)
+        Wait(e.settle)
         if not previewCam or not DoesCamExist(previewCam) then isNuiOpen = false; return end
 
         -- 2. Reafirma o ped no local (OnPlayerLoaded pode ter mexido), ainda oculto.
@@ -704,7 +685,7 @@ startEmerge = function(spawnData)
         cam.emergeRevealed = false
         cam.emergeStart = GetGameTimer()
         cam.mode = 'emerge'
-        local dur = e.duration or 1500
+        local dur = e.duration
         while cam.mode == 'emerge' and (GetGameTimer() - cam.emergeStart) < dur do Wait(0) end
 
         -- 4. Blend pro gameplay cam e entrega o controle. Para os loops ANTES do
@@ -713,8 +694,8 @@ startEmerge = function(spawnData)
         isNuiOpen = false
         setCustomHudHidden(false)
         FreezeEntityPosition(cache.ped, false)
-        RenderScriptCams(false, true, e.blend or 800, true, true)
-        Wait((e.blend or 800) + 50)
+        RenderScriptCams(false, true, e.blend, true, true)
+        Wait(e.blend + 50)
         if previewCam and DoesCamExist(previewCam) then
             DestroyCam(previewCam, false)
             previewCam = nil
@@ -889,7 +870,6 @@ exports('chooseSpawn', function(citizenid)
     end
 
     selectedSpawn = nil
-    selectedSpawnIndex = nil
 
     setupSpawnsInternal(citizenid)
 
@@ -1013,7 +993,8 @@ end)
 
 RegisterNetEvent('mri_Qspawn:client:accentColorChanged', function(newColor)
     if type(newColor) ~= 'string' then return end
-    if not newColor:match('^#%x%x%x%x%x%x$') then return end
+    -- #RRGGBB ou #RRGGBBAA (o alpha e ignorado no theming HSL da NUI)
+    if not (newColor:match('^#%x%x%x%x%x%x$') or newColor:match('^#%x%x%x%x%x%x%x%x$')) then return end
 
     accentColor = newColor
 

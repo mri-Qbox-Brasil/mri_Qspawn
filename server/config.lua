@@ -58,9 +58,9 @@ lib.callback.register('mri_Qspawn:server:saveConfig', function(source, payload)
     if type(payload) ~= 'table' then return false, 'payload inválido' end
 
     -- Merge em vez de replace: preserva chaves não enviadas pela UI (ex.:
-    -- cinematicShot/spawnAnimations quando a aba manda só um subconjunto). Um
+    -- presence/emerge/spawnAnimations quando a aba manda só um subconjunto). Um
     -- save parcial com replace zeraria o resto do config e quebraria a câmera
-    -- de spawn (config.cinematicShot nil) pra TODOS os jogadores de uma vez.
+    -- de spawn (config.presence nil) pra TODOS os jogadores de uma vez.
     for k, v in pairs(payload) do config[k] = v end
     if not saveToDisk() then return false, 'falha ao salvar' end
 
