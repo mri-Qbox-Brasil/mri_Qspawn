@@ -50,6 +50,12 @@ local function doRegister()
     })
 end
 
+-- Sinal oficial do Qadmin: emitido sempre que o registry dele fica pronto.
+-- Complementa o onServerResourceStart abaixo, que depende do timing do start; este
+-- dispara quando o registry esta de fato aceitando plugins. RegisterPlugin e
+-- idempotente por `id`, entao os dois caminhos juntos sao seguros.
+AddEventHandler('mri_Qadmin:server:pluginsReady', doRegister)
+
 -- Qadmin inicia/reinicia → re-registra automaticamente
 AddEventHandler('onServerResourceStart', function(resourceName)
     if resourceName == 'mri_Qadmin' then doRegister() end
