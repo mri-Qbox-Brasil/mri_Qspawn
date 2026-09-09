@@ -194,11 +194,24 @@ end
 -- Coords dentro de MLO (interior) precisam de LoadInterior pra streamar
 -- assets — sem isso o ped cai no vazio e a camera mostra so o ceu/cidade
 -- do alto. Retorna true se tem interior carregado nessas coords.
-local function loadInteriorIfPresent(x, y, z, timeoutMs)
+-- Dispara o carregamento do MLO nessas coords, sem esperar. Separado da espera
+-- de proposito: o streamAround chama isto no inicio pra o interior streamar
+-- DURANTE a espera da cena, em vez de comecar a contar depois dela. Antes os
+-- dois tetos (1500ms da cena + 3000ms do interior) se somavam.
+-- `LoadInterior` e idempotente, entao chamar de novo no resolveGroundZ e barato.
+local function beginInteriorLoad(x, y, z)
     local interior = GetInteriorAtCoords(x, y, z)
-    if interior == 0 then return false end
+    if interior == 0 then return 0 end
     LoadInterior(interior)
-    local deadline = GetGameTimer() + (timeoutMs or 3000)
+    return interior
+end
+
+-- Espera o MLO ficar pronto, com teto. 1200ms e suficiente porque o
+-- streamAround ja pediu o carregamento antes; estourando, o custo e ver o
+-- interior montando por um instante — nao mais o Z errado (ver resolveGroundZ).
+local function waitInteriorReady(interior, timeoutMs)
+    if interior == 0 then return false end
+    local deadline = GetGameTimer() + (timeoutMs or 1200)
     while not IsInteriorReady(interior) and GetGameTimer() < deadline do
         Wait(10)
     end
@@ -214,7 +227,15 @@ end
 -- Dentro de MLO mantém o Z original (interior tem floor próprio). Caller deve ter
 -- feito SetFocusPosAndVel + Wait pro terreno streamar antes.
 resolveGroundZ = function(x, y, z)
-    if loadInteriorIfPresent(x, y, z) then return z end
+    -- A PRESENCA do interior decide, nao o fato de ele ter terminado de
+    -- carregar: dentro de MLO o floor e proprio e o Z do config manda. Antes,
+    -- um interior que estourasse o teto caia no GetGroundZFor_3dCoord abaixo,
+    -- que devolve o chao EXTERNO — o ped ia parar na rua embaixo do predio.
+    local interior = beginInteriorLoad(x, y, z)
+    if interior ~= 0 then
+        waitInteriorReady(interior)
+        return z
+    end
     local found, groundZ = GetGroundZFor_3dCoord(x, y, z + 5.0, false)
     if found and groundZ > 0.0 then return groundZ end
     return z
@@ -237,6 +258,10 @@ local function streamAround(x, y, z, maxMs)
     SetFocusPosAndVel(x, y, z, 0.0, 0.0, 0.0)
     RequestCollisionAtCoord(x, y, z)
     NewLoadSceneStartSphere(x, y, z, 80.0, 0)
+    -- Pede o MLO junto, sem esperar: ele streama durante o loop abaixo em vez
+    -- de so comecar quando o resolveGroundZ chamar. E o que tira os ~3s de
+    -- quem desloga dentro de apartamento/casa.
+    beginInteriorLoad(x, y, z)
     local deadline = GetGameTimer() + (maxMs or 1500)
     while not IsNewLoadSceneLoaded() and GetGameTimer() < deadline do
         RequestCollisionAtCoord(x, y, z)
