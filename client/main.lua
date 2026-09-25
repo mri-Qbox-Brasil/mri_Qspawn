@@ -632,16 +632,39 @@ local function playSimpleSpawnAnimation()
     end)
 end
 
--- Dispara os eventos de carga do player (housing + OnPlayerLoaded). Ideal com o
+-- O ps-housing so monta os imoveis no client no OnPlayerLoaded e avisa com
+-- initialisedProperties; entrar antes disso quebra o EnterShell dele. Se o
+-- player ja esta logado (relog ou restart deste resource), ja foram montados.
+local housingReady = LocalPlayer.state.isLoggedIn == true
+AddEventHandler('ps-housing:client:initialisedProperties', function()
+    housingReady = true
+end)
+
+-- Sem 'spawn': o ps-housing entra pelo PlayerEnter (bucket e metadata inside),
+-- igual a entrar pela porta.
+local function enterProperty(propertyId)
+    if GetResourceState('ps-housing') ~= 'started' then return end
+    local deadline = GetGameTimer() + 10000
+    while not housingReady and GetGameTimer() < deadline do Wait(50) end
+    if not housingReady then
+        print('[mri_Qspawn] AVISO: ps-housing nao carregou os imoveis; entrada no imovel cancelada.')
+        return
+    end
+    -- Bucket 0 antes: o ps-housing troca pro bucket da casa (MLO fica no 0).
+    if GetResourceState('mri_Qmultichar'):find('start') then
+        TriggerServerEvent('mri_Qmultichar:server:setBucket', 0)
+    end
+    TriggerServerEvent('ps-housing:server:enterProperty', tostring(propertyId))
+end
+
+-- Dispara os eventos de carga do player (OnPlayerLoaded + housing). Ideal com o
 -- ped ESCONDIDO: o reapply de aparência (illenium) fica oculto.
 local function triggerSpawnLoad(spawnInfo)
-    -- propertyId vem do servidor (casa escolhida ou imovel em que deslogou) e o
-    -- ps-housing decide como entrar nele.
-    if spawnInfo.propertyId then
-        TriggerServerEvent('mri_Qspawn:server:enterProperty', spawnInfo.propertyId)
-    end
     TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
     TriggerEvent('QBCore:Client:OnPlayerLoaded')
+    if spawnInfo.propertyId then
+        enterProperty(spawnInfo.propertyId)
+    end
 end
 
 -- True se o spawn cai dentro de uma propriedade (housing assume câmera/teleporte,
@@ -650,9 +673,10 @@ local function spawnEntersProperty(spawnInfo)
     return spawnInfo.propertyId ~= nil
 end
 
-local function finishSpawn()
+local function finishSpawn(insideProperty)
     playSimpleSpawnAnimation()
-    if GetResourceState('mri_Qmultichar'):find('start') then
+    -- Dentro de imovel o bucket e o da casa (ps-housing); voltar pro 0 tiraria a instancia.
+    if not insideProperty and GetResourceState('mri_Qmultichar'):find('start') then
         TriggerServerEvent('mri_Qmultichar:server:setBucket', 0)
     end
     TriggerServerEvent('qbx_spawn:server:spawn')
@@ -690,7 +714,7 @@ startEmerge = function(spawnData)
             Wait(e.settle)
             DoScreenFadeIn(fade)
             Wait(300)
-            finishSpawn()
+            finishSpawn(true)
             return
         end
 

@@ -4,7 +4,7 @@ game 'gta5'
 name 'mri_Qspawn'
 description 'Sistema de spawn com NUI moderna baseada em shadcn/ui'
 author 'MRI'
-version '2.6.9'
+version '2.6.10'
 
 ox_lib 'locale'
 

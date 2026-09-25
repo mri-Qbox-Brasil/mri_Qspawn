@@ -83,23 +83,7 @@ local function waitForPlayer(source, timeoutMs)
     return player
 end
 
--- ps-housing e opcional e dono dos proprios dados: casas, imovel em que o
--- jogador deslogou e a entrada no imovel vem da API de spawn dele, sem ler a
--- tabela `properties` nem o metadata `inside` daqui. Versoes antigas do
--- ps-housing nao tem essa API: o pcall evita o erro e avisa uma vez.
-local warnedHousingApi = false
-
-local function housingCall(name, ...)
-    if GetResourceState('ps-housing') ~= 'started' then return nil end
-    local ok, result = pcall(exports['ps-housing'][name], exports['ps-housing'], ...)
-    if ok then return result end
-    if not warnedHousingApi then
-        warnedHousingApi = true
-        print(('[mri_Qspawn] AVISO: ps-housing sem a API de spawn (%s); atualize o ps-housing para habilitar casas no spawn.'):format(name))
-    end
-    return nil
-end
-
+-- Usar exatamente as mesmas funções do qbx_spawn
 lib.callback.register('qbx_spawn:server:getLastLocation', function(source)
     local player = exports.qbx_core:GetPlayer(source)
     if not player then
@@ -116,18 +100,43 @@ lib.callback.register('qbx_spawn:server:getLastLocation', function(source)
     end
 
     local position = json.decode(result.position)
+    local propertyId = player.PlayerData.metadata.inside and
+        player.PlayerData.metadata.inside.property_id or nil
 
-    return position, housingCall('getInsideProperty', source)
+    return position, propertyId
 end)
 
 lib.callback.register('qbx_spawn:server:getHouses', function(source)
-    return housingCall('getSpawnProperties', source) or {}
-end)
+    -- ps-housing é opcional: sem ele não há casas — sai cedo pra não chamar
+    -- export inexistente nem consultar a tabela `properties` ausente.
+    if GetResourceState('ps-housing') ~= 'started' then return {} end
 
--- O client so informa o imovel escolhido; o ps-housing confere o acesso.
-RegisterNetEvent('mri_Qspawn:server:enterProperty', function(propertyId)
-    if type(propertyId) ~= 'string' and type(propertyId) ~= 'number' then return end
-    housingCall('spawnInProperty', source, tostring(propertyId))
+    local player = exports.qbx_core:GetPlayer(source)
+    if not player then return {} end
+
+    local houseData = {}
+
+    local houses = MySQL.query.await(
+        'SELECT property_id, street, apartment FROM properties WHERE owner_citizenid = ?',
+        {player.PlayerData.citizenid})
+
+    if not houses then return {} end
+
+    for i = 1, #houses do
+        local house = houses[i]
+        if not house.apartment then
+            -- getMainDoor pode retornar nil e door.doors pode ser nil: protege a
+            -- cadeia de coords com parênteses e só adiciona se resolveu coords.
+            local door = exports['ps-housing']:getMainDoor(house.property_id, 1, true)
+            local coords = door and (door.objCoords or door.coords
+                or (door.doors and door.doors[1] and (door.doors[1].coords or door.doors[1].objCoords)))
+            if coords then
+                houseData[#houseData + 1] = {label = house.street, coords = coords, propertyId = house.property_id}
+            end
+        end
+    end
+
+    return houseData
 end)
 
 lib.callback.register('qbx_spawn:server:alreadySpawned', function(source)
