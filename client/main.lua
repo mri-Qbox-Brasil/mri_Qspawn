@@ -635,13 +635,10 @@ end
 -- Dispara os eventos de carga do player (housing + OnPlayerLoaded). Ideal com o
 -- ped ESCONDIDO: o reapply de aparência (illenium) fica oculto.
 local function triggerSpawnLoad(spawnInfo)
+    -- propertyId vem do servidor (casa escolhida ou imovel em que deslogou) e o
+    -- ps-housing decide como entrar nele.
     if spawnInfo.propertyId then
-        TriggerServerEvent('ps-housing:server:enterProperty', tostring(spawnInfo.propertyId), 'spawn')
-    elseif spawnInfo.label == 'last_location' and QBX and QBX.PlayerData and QBX.PlayerData.metadata then
-        local insideMeta = QBX.PlayerData.metadata['inside']
-        if insideMeta and insideMeta.property_id then
-            TriggerServerEvent('ps-housing:server:enterProperty', tostring(insideMeta.property_id))
-        end
+        TriggerServerEvent('mri_Qspawn:server:enterProperty', spawnInfo.propertyId)
     end
     TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
     TriggerEvent('QBCore:Client:OnPlayerLoaded')
@@ -650,12 +647,7 @@ end
 -- True se o spawn cai dentro de uma propriedade (housing assume câmera/teleporte,
 -- então usamos fade em vez do "nascimento" cinematográfico).
 local function spawnEntersProperty(spawnInfo)
-    if spawnInfo.propertyId then return true end
-    if spawnInfo.label == 'last_location' and QBX and QBX.PlayerData and QBX.PlayerData.metadata then
-        local insideMeta = QBX.PlayerData.metadata['inside']
-        return insideMeta ~= nil and insideMeta.property_id ~= nil
-    end
-    return false
+    return spawnInfo.propertyId ~= nil
 end
 
 local function finishSpawn()
