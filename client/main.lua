@@ -44,7 +44,9 @@ local function fetchOxLibUiConfig()
     local ok, cfg = pcall(function() return lib.callback.await('ox_lib:getUiConfig', false) end)
     if ok then oxLibUiConfig = cfg end
 end
-fetchOxLibUiConfig()
+-- Em thread: o await no corpo do arquivo segurava o registro dos
+-- RegisterNUICallback abaixo, e o nuiReady do React voltava 404.
+CreateThread(fetchOxLibUiConfig)
 
 -- /uiconfig mudou (admin salvou no painel do ox_lib) — recacheia e reaplica na
 -- NUI standalone sem precisar reabrir.
