@@ -1,39 +1,16 @@
--- Le e persiste settings de UX em data/config.json. O proprio JSON e a
--- fonte de verdade do shape e dos defaults — adicionar setting novo so
--- precisa de edit no JSON + input correspondente no ConfigPanel.tsx.
---
--- Sem fallback de codigo: se o JSON for deletado/corrompido, o getter
--- retorna table vazia e os callers Lua usam `or <fallback inline>` pra
--- comportamentos minimos. Editavel via aba "Configurações" do /adminspawn
--- (gateado por mri_Qspawn.admin OU `command` ACE) + broadcast pra clients
--- reaplicarem sem restart.
+-- Spawn settings: data/config.default.json with the panel overrides from the database on top.
 
-local CONFIG_FILE = 'data/config.json'
-
-local config = {}
-
-local function loadFromDisk()
-    local raw = LoadResourceFile(GetCurrentResourceName(), CONFIG_FILE)
-    if not raw or raw == '' then
-        print(('[mri_Qspawn] AVISO: %s ausente — usando config vazio.'):format(CONFIG_FILE))
-        config = {}
-        return
-    end
-    local ok, parsed = pcall(json.decode, raw)
-    if not ok or type(parsed) ~= 'table' then
-        print(('[mri_Qspawn] AVISO: %s corrompido — usando config vazio.'):format(CONFIG_FILE))
-        config = {}
-        return
-    end
-    config = parsed
+local defaults = ReadResourceJson('data/config.default.json')
+if not defaults then
+    error('[mri_Qspawn] data/config.default.json ausente ou corrompido: reinstale o resource.')
 end
 
-local function saveToDisk()
-    local ok = SaveResourceFile(GetCurrentResourceName(), CONFIG_FILE, json.encode(config, { indent = true }), -1)
-    if not ok then
-        print('[mri_Qspawn] ERRO: falha ao escrever ' .. CONFIG_FILE)
-    end
-    return ok
+local overrides = {} -- block -> diff from default, as stored
+local config = {}
+local loaded = promise.new()
+
+local function rebuild()
+    config = ConfigMerge(json.decode(json.encode(defaults)), overrides)
 end
 
 local function isAdmin(source)
@@ -41,30 +18,45 @@ local function isAdmin(source)
         or IsPlayerAceAllowed(source, 'command')
 end
 
-loadFromDisk()
+CreateThread(function()
+    StorageReady()
+    local rows = MySQL.query.await('SELECT `key`, `value` FROM `mri_qspawn_settings`') or {}
+    for i = 1, #rows do
+        local key = rows[i].key
+        if defaults[key] ~= nil then
+            local ok, value = pcall(json.decode, rows[i].value)
+            -- Re-diff so fields removed from the default in an update are ignored.
+            if ok then overrides[key] = ConfigDiff(defaults[key], value) end
+        end
+    end
+    rebuild()
+    loaded:resolve(true)
+end)
 
--- Lua-side getter pra outros scripts/comandos lerem (ex: o broadcast usa
--- pra mandar a versao corrente em runtime sem reler do disco).
 function GetSpawnConfig()
+    Citizen.Await(loaded)
     return config
 end
 
 lib.callback.register('mri_Qspawn:server:getConfig', function()
-    return config
+    return GetSpawnConfig()
 end)
 
 lib.callback.register('mri_Qspawn:server:saveConfig', function(source, payload)
     if not isAdmin(source) then return false, 'sem permissão' end
     if type(payload) ~= 'table' then return false, 'payload inválido' end
+    Citizen.Await(loaded)
 
-    -- Merge em vez de replace: preserva chaves não enviadas pela UI (ex.:
-    -- presence/emerge/spawnAnimations quando a aba manda só um subconjunto). Um
-    -- save parcial com replace zeraria o resto do config e quebraria a câmera
-    -- de spawn (config.presence nil) pra TODOS os jogadores de uma vez.
-    for k, v in pairs(payload) do config[k] = v end
-    if not saveToDisk() then return false, 'falha ao salvar' end
+    -- A block equal to the default deletes its row.
+    for key, value in pairs(payload) do
+        if defaults[key] ~= nil then
+            local d = ConfigDiff(defaults[key], value)
+            SaveSettingRow(key, d)
+            overrides[key] = d
+        end
+    end
+    rebuild()
 
-    -- Broadcast pra todos os clients reaplicarem sem restart.
     TriggerClientEvent('mri_Qspawn:client:configChanged', -1, config)
     return true, config
 end)

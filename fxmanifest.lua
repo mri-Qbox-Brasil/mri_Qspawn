@@ -4,7 +4,7 @@ game 'gta5'
 name 'mri_Qspawn'
 description 'Sistema de spawn com NUI moderna baseada em shadcn/ui'
 author 'MRI'
-version '2.6.11'
+version '2.7.0'
 
 ox_lib 'locale'
 
@@ -25,6 +25,7 @@ client_scripts {
 
 server_scripts {
 	'@oxmysql/lib/MySQL.lua',
+	'server/storage.lua', -- tabelas, importacao unica e helpers de config
 	'server/config.lua', -- expoe GetSpawnConfig() global, usado por main.lua
 	'server/spawns.lua',
 	'server/main.lua',
@@ -34,9 +35,9 @@ ui_page 'html/index.html'
 
 files {
 	'html/**/*',
-	'client/waypoints.lua',
 	'locales/*.json',
 	'data/*.json',
+	'client/arrival.lua',
 }
 
 lua54 'yes'

@@ -1,32 +1,24 @@
--- Carrega/persiste a lista de spawns em data/spawns.json. Em runtime mantemos
--- uma cópia em memória; toda escrita atualiza o arquivo via SaveResourceFile.
+-- Spawn locations in mri_qspawn_locations; the panel addresses them by row id, not list index.
 
-local SPAWNS_FILE = 'data/spawns.json'
 local spawns = {}
+local loaded = promise.new()
 
-local function loadFromDisk()
-    local raw = LoadResourceFile(GetCurrentResourceName(), SPAWNS_FILE)
-    if not raw or raw == '' then
-        spawns = {}
-        return
-    end
-    local ok, parsed = pcall(json.decode, raw)
-    if not ok or type(parsed) ~= 'table' then
-        -- Paridade com config.lua: loga em vez de zerar silenciosamente todos os
-        -- spawns num JSON corrompido (facilita diagnóstico da perda).
-        print(('[mri_Qspawn] AVISO: %s corrompido — usando lista vazia.'):format(SPAWNS_FILE))
-        spawns = {}
-        return
-    end
-    spawns = parsed
+local function rowToSpawn(r)
+    return {
+        id = r.id,
+        label = r.label,
+        coords = { x = r.x, y = r.y, z = r.z, w = r.heading },
+        icon = r.icon,
+        color = r.color,
+        description = r.description,
+    }
 end
 
-local function saveToDisk()
-    local ok = SaveResourceFile(GetCurrentResourceName(), SPAWNS_FILE, json.encode(spawns, { indent = true }), -1)
-    if not ok then
-        print('[mri_Qspawn] ERRO: falha ao escrever ' .. SPAWNS_FILE)
-    end
-    return ok
+local function reload()
+    local rows = MySQL.query.await('SELECT * FROM `mri_qspawn_locations` ORDER BY `sort_order`, `id`') or {}
+    local list = {}
+    for i = 1, #rows do list[i] = rowToSpawn(rows[i]) end
+    spawns = list
 end
 
 local function isAdmin(source)
@@ -34,32 +26,54 @@ local function isAdmin(source)
         or IsPlayerAceAllowed(source, 'command')
 end
 
-loadFromDisk()
+local function validSpawn(s)
+    if type(s) ~= 'table' or type(s.label) ~= 'string' or s.label == '' then return false end
+    local c = s.coords
+    return type(c) == 'table' and tonumber(c.x) and tonumber(c.y) and tonumber(c.z) and true or false
+end
+
+CreateThread(function()
+    StorageReady()
+    reload()
+    loaded:resolve(true)
+end)
 
 lib.callback.register('mri_Qspawn:server:getSpawns', function()
+    Citizen.Await(loaded)
     return spawns
 end)
 
 lib.callback.register('mri_Qspawn:server:saveSpawn', function(source, payload)
     if not isAdmin(source) then return false, 'sem permissão' end
-    if type(payload) ~= 'table' or type(payload.spawn) ~= 'table' then
+    if type(payload) ~= 'table' or not validSpawn(payload.spawn) then
         return false, 'payload inválido'
     end
-    local index = tonumber(payload.index)
-    if index and spawns[index] then
-        spawns[index] = payload.spawn
+    Citizen.Await(loaded)
+
+    local s, id = payload.spawn, tonumber(payload.id)
+    if id then
+        local c = s.coords
+        local changed = MySQL.update.await(
+            'UPDATE `mri_qspawn_locations` SET `label` = ?, `x` = ?, `y` = ?, `z` = ?, `heading` = ?, `icon` = ?, `color` = ?, `description` = ? WHERE `id` = ?',
+            { s.label, c.x, c.y, c.z, c.w or 0.0, s.icon, s.color, s.description, id })
+        if changed == 0 then return false, 'local não encontrado' end
     else
-        spawns[#spawns + 1] = payload.spawn
+        local order = (MySQL.scalar.await('SELECT COALESCE(MAX(`sort_order`), 0) FROM `mri_qspawn_locations`') or 0) + 1
+        InsertLocationRow(s, order)
     end
-    return saveToDisk(), spawns
+    reload()
+    return true, spawns
 end)
 
-lib.callback.register('mri_Qspawn:server:deleteSpawn', function(source, index)
+lib.callback.register('mri_Qspawn:server:deleteSpawn', function(source, id)
     if not isAdmin(source) then return false, 'sem permissão' end
-    index = tonumber(index)
-    if not index or not spawns[index] then return false, 'índice inválido' end
-    table.remove(spawns, index)
-    return saveToDisk(), spawns
+    id = tonumber(id)
+    if not id then return false, 'id inválido' end
+    Citizen.Await(loaded)
+    local removed = MySQL.update.await('DELETE FROM `mri_qspawn_locations` WHERE `id` = ?', { id })
+    if removed == 0 then return false, 'local não encontrado' end
+    reload()
+    return true, spawns
 end)
 
 lib.callback.register('mri_Qspawn:server:isAdmin', function(source)

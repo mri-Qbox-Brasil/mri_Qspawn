@@ -1,8 +1,6 @@
 {
   "last_location": "Última Localização",
-  "start_at": "Comece em %s",
   "ui": {
-    "stay": "Ficar aqui",
     "hold_to_deploy": "Segure E",
     "loading_locations": "Carregando locais...",
     "edit_spawn": "Editar: {label}",
@@ -33,18 +31,8 @@
     "config_save": "Salvar",
     "config_debug_label": "Modo debug",
     "config_debug_hint": "Logs de diagnóstico no console F8 (fluxo de open/close, fallback timeout).",
-    "config_icon_color_label": "Cor padrão dos ícones",
-    "config_icon_color_hint": "Hex usado quando o spawn não define color próprio.",
-    "config_animations_label": "Animações de spawn",
-    "config_animations_hint": "Scenarios do GTA V sorteados ao chegar no destino.",
-    "config_animation_add": "Adicionar animação",
-    "config_animation_remove": "Remover",
-    "config_animation_placeholder": "WORLD_HUMAN_SMOKING",
-    "config_animation_duration_label": "Duração da animação",
-    "config_select_first_spawn_label": "Selecionar só no primeiro spawn",
-    "config_select_first_spawn_hint": "Quando true, a last-location é auto-selecionada SÓ no primeiro spawn do char na sessão. Quando false, sempre auto-seleciona (legacy).",
-    "cfg_labels": "Labels 3D no mundo",
-    "cfg_labels_hint": "Mostra o nome do local flutuando no mundo (DUI). Desligado = nome só no terço-inferior.",
+    "config_select_first_spawn_label": "Seleção só no primeiro spawn",
+    "config_select_first_spawn_hint": "Quando ligado, a seleção aparece só no primeiro spawn do personagem desde que o servidor subiu. Nos seguintes ele nasce direto na última localização.",
     "cfg_s_postfx": "Pós-processamento & cinema",
     "cfg_s_postfx_hint": "Depth of field, grão de filme, vinheta e barras de cinema (letterbox).",
     "cfg_dof": "Depth of field",
@@ -70,6 +58,13 @@
     "cfg_f_height": "Altura",
     "cfg_f_fov": "FOV",
     "cfg_f_distance": "Distância",
-    "cfg_f_size": "Tamanho (% da tela)"
-  }
+    "cfg_f_size": "Tamanho (% da tela)",
+    "cfg_arrival": "Efeito de chegada",
+    "cfg_arrival_hint": "Ao nascer, o personagem se materializa e um pulso na cor da suíte passa pelo mundo em volta, marcando pessoas e veículos e contornando os objetos.",
+    "continue_here": "Continuar aqui",
+    "spawn_here": "Nascer aqui",
+    "hold_hint": "Segure para confirmar",
+    "switch_location": "trocar local"
+  },
+  "city_center": "Centro da cidade"
 }

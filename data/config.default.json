@@ -1,0 +1,41 @@
+{
+    "sound": {
+        "enabled": true
+    },
+    "presence": {
+        "pitch": 0,
+        "eyeHeight": 1.6,
+        "fov": 50,
+        "sway": 1
+    },
+    "emerge": {
+        "blend": 800,
+        "pitch": -3,
+        "duration": 1500,
+        "settle": 900,
+        "height": 0.6,
+        "distance": 4
+    },
+    "debug": false,
+    "arrival": {
+        "enabled": true
+    },
+    "confirm": {
+        "fade": 500
+    },
+    "letterbox": {
+        "size": 11,
+        "enabled": false
+    },
+    "postfx": {
+        "dof": false,
+        "vignette": true,
+        "grain": true
+    },
+    "blink": {
+        "in": 150,
+        "stream": 1500,
+        "out": 90
+    },
+    "selectOnFirstSpawn": false
+}

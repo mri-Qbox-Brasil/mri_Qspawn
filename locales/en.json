@@ -1,8 +1,6 @@
 {
   "last_location": "Last Location",
-  "start_at": "Starting point at %s",
   "ui": {
-    "stay": "Stay here",
     "hold_to_deploy": "Hold E",
     "loading_locations": "Loading locations...",
     "edit_spawn": "Edit: {label}",
@@ -33,18 +31,8 @@
     "config_save": "Save",
     "config_debug_label": "Debug mode",
     "config_debug_hint": "Diagnostic logs in the F8 console (open/close flow, fallback timeout).",
-    "config_icon_color_label": "Default icon color",
-    "config_icon_color_hint": "Hex used when the spawn doesn't define its own color.",
-    "config_animations_label": "Spawn animations",
-    "config_animations_hint": "GTA V scenarios randomly picked when arriving at the destination.",
-    "config_animation_add": "Add animation",
-    "config_animation_remove": "Remove",
-    "config_animation_placeholder": "WORLD_HUMAN_SMOKING",
-    "config_animation_duration_label": "Animation duration",
-    "config_select_first_spawn_label": "Select only on first spawn",
-    "config_select_first_spawn_hint": "When true, last-location is auto-selected ONLY on the char's first spawn in the session. When false, always auto-selects (legacy).",
-    "cfg_labels": "3D world labels",
-    "cfg_labels_hint": "Shows the location name floating in the world (DUI). Off = name only in the lower-third.",
+    "config_select_first_spawn_label": "Selection only on first spawn",
+    "config_select_first_spawn_hint": "When on, the selection only shows on the character's first spawn since the server started. After that it spawns straight at the last location.",
     "cfg_s_postfx": "Post-processing & cinema",
     "cfg_s_postfx_hint": "Depth of field, film grain, vignette and cinema bars (letterbox).",
     "cfg_dof": "Depth of field",
@@ -70,6 +58,13 @@
     "cfg_f_height": "Height",
     "cfg_f_fov": "FOV",
     "cfg_f_distance": "Distance",
-    "cfg_f_size": "Size (% of screen)"
-  }
+    "cfg_f_size": "Size (% of screen)",
+    "cfg_arrival": "Arrival effect",
+    "cfg_arrival_hint": "On spawn, the character materializes and a pulse in the suite color sweeps the world around, marking people and vehicles and outlining objects.",
+    "continue_here": "Continue here",
+    "spawn_here": "Spawn here",
+    "hold_hint": "Hold to confirm",
+    "switch_location": "switch location"
+  },
+  "city_center": "City center"
 }

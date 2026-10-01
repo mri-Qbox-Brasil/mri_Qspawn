@@ -1,10 +1,10 @@
-local Waypoints = require 'client.waypoints'
+local Arrival = require 'client.arrival'
 local spawns = {}
 
 -- Runtime cache do config persistido em data/config.json. Hydratado lazy no
 -- primeiro uso via lib.callback e mutado in-place pelo broadcast
 -- `mri_Qspawn:client:configChanged` (admin salvou pela UI). Nunca leia direto
--- desta tabela antes da hidratacao terminar — use ensureConfig() ou getConfig().
+-- desta tabela antes da hidratacao terminar: chame ensureConfig() antes.
 local config = {}
 local configHydrated = false
 local configLoading = false
@@ -25,7 +25,6 @@ local function ensureConfig()
     end
     configHydrated = true
     configLoading = false
-    Waypoints.setColorDefault(config.defaultSpawnIconColor)
 end
 
 -- accentColor vive separado do `config` porque vem da convar global
@@ -60,6 +59,12 @@ local function debug(...)
     if config.debug then print(...) end
 end
 
+-- Medição do spawn: mesmo relógio e prefixo do marco zero do mri_Qmultichar
+-- (personagem escolhido), pra somar o tempo até o jogador ter controle.
+local function markTime(step)
+    debug(('[tempo-spawn] %s t=%d'):format(step, GetGameTimer()))
+end
+
 CreateThread(function()
     -- Hydrata config no boot do client. Nao bloqueia o resto do script;
     -- callers chamam ensureConfig() se precisarem de valor garantido.
@@ -74,18 +79,10 @@ local function getTranslatedLabel(label)
     return label
 end
 
-local function getTranslatedDescription(label, fallbackDesc)
-    if fallbackDesc then return fallbackDesc end
-    local displayLabel = (label == 'last_location') and (locale('last_location') or label) or label
-    return locale('start_at', displayLabel) or string.format('Comece em %s', displayLabel)
-end
-
 local isNuiOpen = false
 local previewCam = nil
-local scaleform = nil
 local selectedSpawn = nil
 local hasJsSignaledReady = false -- ack-only: marca que o JS realmente confirmou recepcao
-local hasFallbackFired = false   -- distingue "fallback tentou" de "JS confirmou" — sem isso, race entre fallback e mount perdia o `open` (fallback enviava antes do JS escutar e travava o re-send no nuiReady)
 local jsHasMounted = false -- React envia nuiReady no mount; usado pra evitar SendNUIMessage antes da UI escutar.
 
 -- Controlador de câmera — PRESENÇA em 1ª pessoa. O jogador "está" no local,
@@ -169,16 +166,9 @@ local function stopCamera(blendMs)
     end
 
     ClearFocus()
-
-    if scaleform then
-        BeginScaleformMovieMethod(scaleform, 'CLEANUP')
-        EndScaleformMovieMethod()
-        SetScaleformMovieAsNoLongerNeeded(scaleform)
-        scaleform = nil
-    end
 end
 
-local function setupAerialMap()
+local function hideGameHudWhileOpen()
     CreateThread(function()
         while isNuiOpen and DoesCamExist(previewCam) do
             HideHudAndRadarThisFrame() -- some todo o HUD/minimapa do jogo
@@ -236,6 +226,9 @@ resolveGroundZ = function(x, y, z)
     local interior = beginInteriorLoad(x, y, z)
     if interior ~= 0 then
         waitInteriorReady(interior)
+        -- Saved z is the ped root (~1 m above the feet): probe this floor from it, never from above.
+        local onFloor, floorZ = GetGroundZFor_3dCoord(x, y, z + 0.5, false)
+        if onFloor and floorZ > z - 3.0 then return floorZ end
         return z
     end
     local found, groundZ = GetGroundZFor_3dCoord(x, y, z + 5.0, false)
@@ -244,7 +237,7 @@ resolveGroundZ = function(x, y, z)
 end
 
 -- Teleporta o ped (congelado/invencível) pra coord. `visible` controla se ele
--- aparece — durante o voo entre spawns fica invisível pra não "piscar" no ar.
+-- aparece: na seleção fica invisível (a câmera está nos olhos dele).
 teleportPed = function(x, y, z, w, visible)
     SetEntityCoords(cache.ped, x, y, z, false, false, false, false)
     SetEntityHeading(cache.ped, w or 0.0)
@@ -324,8 +317,8 @@ local function serializeSpawns(spawnsToSerialize)
                 label = getTranslatedLabel(spawn.label),
                 coords = coords,
                 icon = spawn.icon,
-                color = Waypoints.colorFor(spawn),
-                description = spawn.description or getTranslatedDescription(spawn.label, nil),
+                color = spawn.color,
+                isLast = spawn.label == 'last_location',
                 propertyId = spawn.propertyId,
                 first_time = spawn.first_time,
                 key = spawn.key
@@ -346,7 +339,7 @@ local function openSpawnUI()
         return
     end
 
-    ensureConfig() -- garante config hidratado (labels/postfx/câmera dependem dele)
+    ensureConfig() -- garante config hidratado (postfx/câmera dependem dele)
 
     isNuiOpen = true
     hasJsSignaledReady = false
@@ -368,6 +361,7 @@ local function openSpawnUI()
 
     -- Carrega o mundo no primeiro local antes de revelar.
     streamAround(fx, fy, fz, (config.blink and config.blink.stream) or 1500)
+    markTime('cena carregada')
 
     -- Ped fica ESCONDIDO durante a seleção (1ª pessoa: a câmera está nos olhos
     -- dele). Posicionado no local pra o confirmar spawnar no lugar certo.
@@ -382,17 +376,14 @@ local function openSpawnUI()
     cam.mode = 'presence'
 
     createCam(fx, fy, fz)
-    setupAerialMap()
-    if config.showWorldLabels then
-        Waypoints.createForSpawns(spawns, getCoordsValues, getTranslatedLabel)
-    end
+    hideGameHudWhileOpen()
     startCameraLoop()
 
-    -- Segura antes do fade-in pra câmera renderizar o primeiro frame da chegada
-    -- (e, com labels ligados, esperar as DUIs carregarem e evitar flick).
-    Wait(config.showWorldLabels and 500 or 200)
+    -- Segura antes do fade-in pra câmera renderizar o primeiro frame da chegada.
+    Wait(200)
     DoScreenFadeIn(400)
     while IsScreenFadingIn() do Wait(0) end
+    markTime('selecao visivel')
 
     SetNuiFocus(true, true)
 
@@ -407,7 +398,6 @@ local function openSpawnUI()
             while isNuiOpen and not jsHasMounted do
                 if GetGameTimer() - start > 8000 then
                     debug('[mri_Qspawn] React demorou pra montar; forçando abertura via fallback.')
-                    hasFallbackFired = true
                     sendOpenMessage()
                     break
                 end
@@ -418,7 +408,7 @@ local function openSpawnUI()
 end
 
 -- Idempotente: chamado pelo nuiReady (JS confirma mount) e pelo fallback de
--- 4s. So bloqueia re-envio depois que o JS ack via nuiReady — fallback NAO
+-- 8s. So bloqueia re-envio depois que o JS ack via nuiReady; o fallback nao
 -- bloqueia, pq se ele disparou e o JS ainda nao montou, a msg foi pro vazio
 -- e precisa ser re-enviada quando o nuiReady chegar.
 function sendOpenMessage()
@@ -438,27 +428,11 @@ function sendOpenMessage()
         },
     })
 
+    markTime('ui aberta')
+
     if #spawns > 0 then
         selectedSpawn = spawns[1]
     end
-end
-
-local function closeSpawnUI()
-    if not isNuiOpen then return end
-
-    isNuiOpen = false
-    selectedSpawn = nil
-    cam.mode = nil
-    cam.busy = false
-    cam.pendingCoords = nil
-    Waypoints.removeAll()
-    SetNuiFocus(false, false)
-    stopCamera()
-    setCustomHudHidden(false) -- restaura a HUD do servidor
-
-    SendNUIMessage({
-        action = 'close',
-    })
 end
 
 -- ============================================================
@@ -499,15 +473,24 @@ end
 -- Trocar de local = "piscar" (match-cut): fade-out rápido → reposiciona o ped
 -- (escondido) e streama → nova presença → fade-in. Enfileira o último pedido se
 -- já estiver piscando.
-requestShowLocation = function(coords)
+-- Avisa a NUI qual local a câmera mostra de fato: o nome na tela troca junto
+-- com a imagem, não no aperto da tecla.
+local function notifyShown(index)
+    SendNUIMessage({ action = 'locationShown', index = index })
+end
+
+---@param index number índice do spawn na NUI (base 0)
+requestShowLocation = function(coords, index)
     if cam.mode ~= 'presence' then return end
     local x, y, z, w = getCoordsValues(coords)
     if not (x and y and z) then return end
+    -- Piscando: o último pedido substitui o pendente. A checagem de "já está
+    -- aqui" fica pra quando ele rodar (voltar pro local atual cancela o pendente).
+    if cam.busy then cam.pendingCoords = { coords = coords, index = index }; return end
     if cam.target then
         local dx, dy, dz = cam.target.x - x, cam.target.y - y, cam.target.z - z
-        if dx * dx + dy * dy + dz * dz < 1.0 then return end -- dedup
+        if dx * dx + dy * dy + dz * dz < 1.0 then notifyShown(index); return end
     end
-    if cam.busy then cam.pendingCoords = coords; return end
 
     cam.busy = true
     playUiSound('blink')
@@ -529,18 +512,31 @@ requestShowLocation = function(coords)
         setupShot(x, y, gz, w)
         updatePresence() -- posiciona a câmera já no primeiro frame
 
+        notifyShown(index)
         DoScreenFadeIn(b['in'])
         cam.busy = false
 
         local pending = cam.pendingCoords
         cam.pendingCoords = nil
-        if pending then requestShowLocation(pending) end
+        if pending then requestShowLocation(pending.coords, pending.index) end
     end)
 end
 
 local function easeInOut(p)
     if p < 0.5 then return 4 * p * p * p end
     return 1 - math.pow(-2 * p + 2, 3) / 2
+end
+
+-- Revela o personagem no mundo: com a chegada ligada ele se materializa e o
+-- pulso sai dos pés dele (client/arrival.lua); desligada, só aparece.
+---@param feet vector3
+local function arrive(feet)
+    if not config.arrival.enabled then
+        SetEntityVisible(cache.ped, true, false)
+        return
+    end
+    Arrival.materialize(cache.ped)
+    Arrival.pulse(feet, accentColor:sub(1, 7), config.sound.enabled ~= false)
 end
 
 -- "Nascimento" (confirmar): a câmera SAI da 1ª pessoa (olhos) puxando pra trás e
@@ -558,8 +554,8 @@ local function updateEmerge()
     -- Revela o ped só quando a lente JÁ SAIU da cabeça (distância real percorrida
     -- pra trás > ~0.45m), senão pisca o interior da cabeça no primeiro frame.
     if not cam.emergeRevealed and tt * e.distance > 0.45 then
-        SetEntityVisible(cache.ped, true, false)
         cam.emergeRevealed = true
+        arrive(vector3(t.x, t.y, t.z))
     end
 
     local h = math.rad(t.w or 0.0)
@@ -614,25 +610,9 @@ RegisterNUICallback('selectSpawn', function(data, cb)
 
     debug(string.format('[mri_Qspawn] Spawn selecionado: %s (índice %d)', spawnData.label or 'sem label', spawnIndex))
 
-    requestShowLocation(spawnData.coords)
+    requestShowLocation(spawnData.coords, data.index)
     cb({ success = true })
 end)
-
-local function playSimpleSpawnAnimation()
-    CreateThread(function()
-        Wait(300)
-
-        local animations = config.spawnAnimations
-        if not animations or #animations == 0 then return end
-
-        local selectedAnimation = animations[math.random(#animations)]
-        local duration = config.spawnAnimationDuration or 3000
-
-        TaskStartScenarioInPlace(cache.ped, selectedAnimation, 0, true)
-        Wait(duration)
-        ClearPedTasks(cache.ped)
-    end)
-end
 
 -- O ps-housing so monta os imoveis no client no OnPlayerLoaded e avisa com
 -- initialisedProperties; entrar antes disso quebra o EnterShell dele. Se o
@@ -676,12 +656,12 @@ local function spawnEntersProperty(spawnInfo)
 end
 
 local function finishSpawn(insideProperty)
-    playSimpleSpawnAnimation()
     -- Dentro de imovel o bucket e o da casa (ps-housing); voltar pro 0 tiraria a instancia.
     if not insideProperty and GetResourceState('mri_Qmultichar'):find('start') then
         TriggerServerEvent('mri_Qmultichar:server:setBucket', 0)
     end
     TriggerServerEvent('qbx_spawn:server:spawn')
+    markTime('controle entregue')
     debug('[mri_Qspawn] Spawn completado')
 end
 
@@ -755,6 +735,39 @@ startEmerge = function(spawnData)
     end)
 end
 
+-- selectOnFirstSpawn: o personagem ja spawnou nesta sessao do servidor, entao
+-- nasce direto no spawn (a ultima localizacao), sem abrir a selecao. Sincrono:
+-- o chooseSpawn so retorna depois do spawn. A tela ja vem preta do multichar.
+local function spawnWithoutSelection(spawnData)
+    if not IsScreenFadedOut() then
+        DoScreenFadeOut(150)
+        while not IsScreenFadedOut() do Wait(0) end
+    end
+
+    local insideProperty = spawnEntersProperty(spawnData)
+    local feet
+    if not insideProperty then
+        -- Dentro de imovel o ps-housing faz o teleporte (ver triggerSpawnLoad).
+        -- Fora, o ped fica escondido ate a chegada revelar ele no fade-in.
+        local x, y, z, w = getCoordsValues(spawnData.coords)
+        streamAround(x, y, z, config.blink.stream)
+        local gz = resolveGroundZ(x, y, z)
+        teleportPed(x, y, gz, w, false)
+        waitPedCollision(500)
+        feet = vector3(x, y, gz)
+    else
+        SetEntityVisible(cache.ped, true, false)
+    end
+
+    FreezeEntityPosition(cache.ped, false)
+    SetEntityInvincible(cache.ped, false)
+    triggerSpawnLoad(spawnData)
+    Wait(config.emerge.settle)
+    DoScreenFadeIn(config.confirm.fade)
+    if feet then arrive(feet) end
+    finishSpawn(insideProperty)
+end
+
 RegisterNUICallback('confirmSpawn', function(_, cb)
     if not selectedSpawn or not selectedSpawn.coords then
         print('[mri_Qspawn] ERRO: Nenhum spawn selecionado ao confirmar')
@@ -771,13 +784,14 @@ RegisterNUICallback('confirmSpawn', function(_, cb)
 
     debug(string.format('[mri_Qspawn] Confirmando spawn: %s', spawnData.label or 'sem label'))
     playUiSound('confirm')
+    markTime('spawn confirmado')
     startEmerge(spawnData)
 
     cb({ success = true })
 end)
 
 
--- Cache dos spawns que vêm do data/spawns.json via callback. Refrescado a cada
+-- Cache dos spawns que vêm do banco via callback. Refrescado a cada
 -- chooseSpawn pra refletir alterações feitas pelo painel admin.
 local cachedDataSpawns = nil
 local function fetchDataSpawns()
@@ -788,8 +802,10 @@ local function fetchDataSpawns()
     return cachedDataSpawns
 end
 
--- Retorna true se consumiu dataSpawns[1] como fallback — caller usa pra pular
--- esse índice em addConfigSpawns e evitar duplicação.
+-- "Última localização" só existe quando o personagem tem posição salva. Sem
+-- ela, o primeiro spawn do painel abre a lista com o nome real dele (em vez de
+-- se passar pela última localização); sem nenhum spawn no painel, o centro da
+-- cidade garante um lugar pra nascer.
 local function addLastLocation(allowFallback)
     local ok, lastLoc, propertyId = pcall(function()
         return lib.callback.await('qbx_spawn:server:getLastLocation', false)
@@ -804,30 +820,23 @@ local function addLastLocation(allowFallback)
             label = 'last_location',
             coords = lastLoc,
             icon = 'map-pin',
-            description = getTranslatedDescription('last_location', 'Start at last location'),
             propertyId = propertyId
         }
-        return false
+        return
     end
 
-    if not allowFallback then return false end
+    if not allowFallback or #(cachedDataSpawns or {}) > 0 then return end
 
-    local data = cachedDataSpawns or {}
-    local fallbackCoords = data[1] and serializeCoords(data[1].coords)
     spawns[#spawns+1] = {
-        label = 'last_location',
-        coords = fallbackCoords or { x = -269.4, y = -955.3, z = 31.2, w = 205.8 },
+        label = locale('city_center'),
+        coords = { x = -269.4, y = -955.3, z = 31.2, w = 205.8 },
         icon = 'map-pin',
-        description = 'Start at last location',
-        propertyId = nil
     }
-    return fallbackCoords ~= nil
 end
 
-local function addConfigSpawns(skipFirst)
+local function addConfigSpawns()
     local data = cachedDataSpawns or {}
-    if #data == 0 then return end
-    for i = (skipFirst and 2 or 1), #data do
+    for i = 1, #data do
         local spawn = data[i]
         if spawn and spawn.coords and spawn.label then
             local coords = serializeCoords(spawn.coords)
@@ -837,7 +846,6 @@ local function addConfigSpawns(skipFirst)
                     coords = coords,
                     icon = spawn.icon or 'map-pin',
                     color = spawn.color,
-                    description = spawn.description or getTranslatedDescription(spawn.label, string.format('Start at %s', spawn.label))
                 }
             end
         end
@@ -857,7 +865,6 @@ local function addHouses()
                 coords = h.coords,
                 propertyId = h.propertyId,
                 icon = 'home',
-                description = string.format('Start at %s', h.label)
             }
         end
     end
@@ -873,7 +880,6 @@ local function addApartments(apps)
                 label = v.label or k,
                 coords = vector3(v.door.x, v.door.y, v.door.z),
                 icon = 'building',
-                description = string.format('Start at %s', v.label or k)
             }
         end
     end
@@ -891,8 +897,8 @@ local function loadSpawns(opts)
     end
 
     fetchDataSpawns()
-    local consumedFirst = addLastLocation(opts.fallback)
-    addConfigSpawns(consumedFirst)
+    addLastLocation(opts.fallback)
+    addConfigSpawns()
     addHouses()
 end
 
@@ -904,6 +910,7 @@ end
 -- Entrypoint do qbx_core (multichar → "Play").
 exports('chooseSpawn', function(citizenid)
     debug(string.format('[mri_Qspawn] chooseSpawn chamado com citizenid: %s', citizenid or 'nil'))
+    markTime('chooseSpawn')
 
     if isNuiOpen then
         print('[mri_Qspawn] AVISO: UI já está aberta, ignorando chooseSpawn')
@@ -922,9 +929,19 @@ exports('chooseSpawn', function(citizenid)
     selectedSpawn = nil
 
     setupSpawnsInternal(citizenid)
+    markTime('spawns carregados')
 
     if #spawns == 0 then
         print('[mri_Qspawn] ERRO: Nenhum spawn foi configurado após setupSpawnsInternal!')
+        return
+    end
+
+    -- spawns[1] e a ultima localizacao quando ela existe; senao, o primeiro local
+    -- da lista (ver addLastLocation).
+    ensureConfig()
+    if config.selectOnFirstSpawn and lib.callback.await('qbx_spawn:server:alreadySpawned', false) then
+        debug('[mri_Qspawn] Ja spawnou nesta sessao; indo direto pra ultima localizacao.')
+        spawnWithoutSelection(spawns[1])
         return
     end
 
@@ -947,8 +964,7 @@ end)
 RegisterNUICallback('nuiReady', function(_, cb)
     jsHasMounted = true
     -- Se o fallback ja enviou antes do JS escutar, re-envia agora pra garantir
-    -- que o React receba. Idempotente do lado JS — receber `open` 2x ok.
-    if hasFallbackFired then hasFallbackFired = false end
+    -- que o React receba. Idempotente do lado JS: receber `open` 2x ok.
     sendOpenMessage()
     hasJsSignaledReady = true -- so trava DEPOIS de garantir o re-envio
     cb('ok')
@@ -1008,7 +1024,7 @@ end)
 
 RegisterNUICallback('adminSaveSpawn', function(data, cb)
     local ok, list = lib.callback.await('mri_Qspawn:server:saveSpawn', false, {
-        index = data.index,
+        id = data.id,
         spawn = data.spawn,
     })
     if ok then cachedDataSpawns = list end
@@ -1016,7 +1032,7 @@ RegisterNUICallback('adminSaveSpawn', function(data, cb)
 end)
 
 RegisterNUICallback('adminDeleteSpawn', function(data, cb)
-    local ok, list = lib.callback.await('mri_Qspawn:server:deleteSpawn', false, data.index)
+    local ok, list = lib.callback.await('mri_Qspawn:server:deleteSpawn', false, data.id)
     if ok then cachedDataSpawns = list end
     cb({ success = ok == true, spawns = list or cachedDataSpawns or {} })
 end)
@@ -1038,7 +1054,6 @@ end)
 RegisterNetEvent('mri_Qspawn:client:configChanged', function(newConfig)
     if type(newConfig) ~= 'table' then return end
     for k, v in pairs(newConfig) do config[k] = v end
-    Waypoints.setColorDefault(config.defaultSpawnIconColor)
 end)
 
 RegisterNetEvent('mri_Qspawn:client:accentColorChanged', function(newColor)

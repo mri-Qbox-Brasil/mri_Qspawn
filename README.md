@@ -1,6 +1,6 @@
 # mri_Qspawn — Manual
 
-Sistema de spawn com NUI cinemática e markers 3D no mundo. Plug-and-play em servidores QBox/QBCore.
+Sistema de spawn com NUI cinemática em 1ª pessoa. Plug-and-play em servidores QBox/QBCore.
 
 ---
 
@@ -26,8 +26,8 @@ Sistema de spawn com NUI cinemática e markers 3D no mundo. Plug-and-play em ser
 | Recurso | Obrigatório | Observação |
 |---|---|---|
 | `qbx_core` | Sim | Framework base |
-| `ox_lib` | Sim | Callbacks, locale, DUI helper |
-| `oxmysql` | Sim | Leitura de `last_location` e casas |
+| `ox_lib` | Sim | Callbacks, locale, /uiconfig |
+| `oxmysql` | Sim | Configurações e locais de spawn (tabelas próprias), `last_location` e casas |
 | `ps-housing` | Não | Spawn em propriedades e apartamentos |
 | `mri_Qmultichar` | Não | Move o jogador para o bucket global ao spawnar |
 | `mri_Qadmin` | Não | Registra o painel como plugin do painel admin MRI |
@@ -59,7 +59,7 @@ Qualquer grupo ou identifier pode ser usado no lugar de `group.admin`. O gate in
 
 ## Spawns — gerenciamento
 
-A lista de spawns fica em `data/spawns.json`. Esse arquivo é a fonte da verdade: alterações feitas via painel admin são persistidas aqui em tempo real, sem necessidade de restart.
+Os locais de spawn ficam no banco, na tabela `mri_qspawn_locations`, que o resource cria sozinho na primeira subida. O painel admin grava direto nela, sem restart, e atualizar o resource não mexe nos locais cadastrados.
 
 ### Formato de um spawn
 
@@ -75,15 +75,19 @@ A lista de spawns fica em `data/spawns.json`. Esse arquivo é a fonte da verdade
 
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|
-| `label` | string | Sim | Nome exibido na UI e nos markers 3D |
+| `label` | string | Sim | Nome exibido na UI |
 | `coords` | objeto `{x,y,z,w}` | Sim | Coordenadas e heading (`w`) do ponto de spawn |
 | `icon` | string | Não | Nome do ícone Lucide (kebab-case). Padrão: `map-pin` |
-| `color` | string hex | Não | Cor do ícone no marker 3D. Se omitido, usa `defaultSpawnIconColor` da configuração |
-| `description` | string | Não | Texto exibido no card de seleção da UI |
+| `color` | string hex | Não | Cor do ponto do spawn na seleção e do ícone no painel admin. Se omitido, segue a cor de destaque da suíte (`mri:color`) |
+| `description` | string | Não | Anotação exibida no painel admin (`/adminspawn`) |
 
-### Seed manual
+### Locais iniciais
 
-Para definir a lista inicial sem usar o painel, edite `data/spawns.json` diretamente e dê restart no recurso. As alterações são carregadas na inicialização.
+Na primeira subida, a tabela recebe os locais de `data/spawns.default.json`. Isso acontece uma vez só: depois, os locais se gerenciam pelo painel.
+
+### Vindo de uma versão com `data/spawns.json` e `data/config.json`
+
+Na primeira subida da versão com banco, o resource importa sozinho o que estiver nesses arquivos: os locais vão para `mri_qspawn_locations` (na mesma ordem) e, do config, só o que difere do padrão vai para `mri_qspawn_settings`. A importação roda uma vez só. Depois disso os dois arquivos não são mais lidos e podem ser apagados. Quem atualiza substituindo a pasta precisa manter esses dois arquivos na primeira subida para a importação acontecer.
 
 ---
 
@@ -105,7 +109,7 @@ Execute o comando no chat:
 - **Usar minha posição** — preenche as coordenadas e o heading com a posição atual do personagem no mundo.
 - **Apagar** — remove o spawn após confirmação. A operação é irreversível via UI.
 
-Todas as alterações são salvas imediatamente em `data/spawns.json` e aplicadas na próxima abertura da tela de spawn, sem restart.
+Todas as alterações são salvas imediatamente no banco e aplicadas na próxima abertura da tela de spawn, sem restart.
 
 ### Aba "Configurações"
 
@@ -117,14 +121,14 @@ Permite editar os parâmetros de comportamento da UI e da câmera em runtime. As
 
 ## Configurações de comportamento
 
-As configurações ficam em `data/config.json` e podem ser editadas manualmente ou via aba "Configurações" do painel admin.
+Os valores padrão ficam em `data/config.default.json`, que vem com o resource. O que o admin muda na aba "Configurações" do painel vai para o banco (tabela `mri_qspawn_settings`), só o que difere do padrão, e é aplicado por cima dele. Assim, uma atualização traz os campos novos sozinha e não apaga nada que foi ajustado. Não edite o `config.default.json` para personalizar: ele é sobrescrito a cada atualização. Use o painel.
+
+O exemplo abaixo é o `data/config.default.json`:
 
 ```json
 {
   "debug": false,
-  "defaultSpawnIconColor": "#FFFFFF",
   "selectOnFirstSpawn": false,
-  "showWorldLabels": false,
 
   "presence": { "eyeHeight": 1.6, "fov": 50.0, "sway": 1.0, "pitch": 0.0 },
   "blink": { "out": 90, "in": 150, "stream": 1500 },
@@ -137,9 +141,7 @@ As configurações ficam em `data/config.json` e podem ser editadas manualmente 
   "sound": { "enabled": true },
   "letterbox": { "enabled": false, "size": 11.0 },
   "postfx": { "dof": false, "grain": true, "vignette": true },
-
-  "spawnAnimations": [],
-  "spawnAnimationDuration": 0
+  "arrival": { "enabled": true }
 }
 ```
 
@@ -148,11 +150,7 @@ As configurações ficam em `data/config.json` e podem ser editadas manualmente 
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `debug` | bool | Ativa logs de diagnóstico no console F8 (fluxo open/close, timeouts) |
-| `defaultSpawnIconColor` | hex | Cor do marker 3D quando o spawn não define `color` próprio |
-| `selectOnFirstSpawn` | bool | Quando `true`, a tela de seleção é pulada se o personagem já spawnou nesta sessão. Quando `false` (padrão), a seleção aparece sempre |
-| `showWorldLabels` | bool | Exibe os nomes dos spawns como markers 3D no mundo durante a seleção |
-| `spawnAnimations` | array de strings | Scenarios do GTA V sorteados ao chegar no destino (`WORLD_HUMAN_*`). Vazio = sem animação |
-| `spawnAnimationDuration` | ms | Tempo na animação após spawnar. `0` desliga |
+| `selectOnFirstSpawn` | bool | Quando `true`, a seleção aparece só no primeiro spawn do personagem desde que o servidor subiu; nos seguintes ele nasce direto na última localização (dentro do imóvel, se deslogou num). O controle fica em memória e zera ao reiniciar o `mri_Qspawn`. Quando `false` (padrão), a seleção aparece sempre |
 
 ### Câmera
 
@@ -176,6 +174,27 @@ a câmera recuar dos olhos para a terceira pessoa antes de devolver o controle.
 | | `height` | m | Altura final acima da linha dos olhos |
 | | `pitch` | graus | Inclinação final |
 | | `blend` | ms | Transição de volta para a câmera do jogo |
+
+### Chegada
+
+Ao nascer, o personagem se materializa e um sonar na cor da suíte (`mri:color`) sai dos pés dele.
+Primeiro a energia se junta nos pés (anéis encolhendo e uma luz crescendo); então ele estoura:
+uma onda principal com som, clarão e efeito de tela, e outras mais fracas acompanhando logo atrás.
+As ondas saem rápido e desaceleram, com anel no chão e ecos atrás, uma parede de luz baixa e
+luzes na frente que iluminam o que a onda atravessa. Pessoas e veículos
+alcançados viram "contatos" (pulsos pequenos e curtos no chão embaixo deles e um marcador gira em cima), e
+os objetos ganham um contorno em holograma quando a onda principal chega, com o brilho subindo a
+cada onda e caindo aos poucos. O contorno não é usado em pessoas
+nem veículos: o native (`SetEntityDrawOutline`) derruba o jogo nesses casos. Vale para o "nascimento" depois da
+seleção e para o spawn direto do `selectOnFirstSpawn`; dentro de imóvel não roda (o housing
+assume a câmera).
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `enabled` | bool | Liga o efeito. Desligado, o personagem só aparece |
+
+O efeito em si (tempos, raio, som, cores e intensidade) é fixo no `client/arrival.lua`: não é configuração.
+
 
 ### Apresentação
 
@@ -212,13 +231,13 @@ mesmas regras; sem ela, o fundo fica no padrão do tema.
 
 Os ícones vêm da biblioteca [Lucide](https://lucide.dev/icons) e são especificados em kebab-case: `shield`, `map-pin`, `tree-pine`, `building`, `home`, `bed`, `leaf`, etc.
 
-Para usar um ícone em um spawn, defina o campo `icon` no `data/spawns.json` ou no formulário do painel admin:
+Para usar um ícone em um spawn, defina o campo `icon` no formulário do painel admin:
 
 ```json
 { "label": "Floresta", "icon": "tree-pine", "color": "#4ADE80", ... }
 ```
 
-A UI carrega o Lucide via UMD em runtime, então qualquer ícone do catálogo funciona sem necessidade de rebuild ou modificação de arquivos. O marker 3D no mundo exibe apenas texto e cor, não usa o ícone.
+A UI carrega o Lucide via UMD em runtime, então qualquer ícone do catálogo funciona sem necessidade de rebuild ou modificação de arquivos.
 
 ---
 
@@ -282,19 +301,18 @@ Para adicionar um novo idioma, crie `locales/<codigo>.json` seguindo a estrutura
 ```
 mri_Qspawn/
 ├── client/
-│   ├── main.lua          — fluxo principal: NUI, câmera cinemática, fades, eventos de spawn
-│   └── waypoints.lua     — markers 3D via DUI + DrawTexturedPoly
+│   └── main.lua          — fluxo principal: NUI, câmera cinemática, fades, eventos de spawn
 ├── server/
-│   ├── config.lua        — leitura/escrita de data/config.json, broadcast de mudanças
-│   ├── spawns.lua        — CRUD de data/spawns.json, callbacks de admin
+│   ├── storage.lua       : tabelas no banco, importação única dos arquivos antigos
+│   ├── config.lua        : padrão + ajustes do banco, broadcast de mudanças
+│   ├── spawns.lua        : CRUD dos locais no banco, callbacks de admin
 │   └── main.lua          — last_location, casas, integração mri_Qadmin, selectOnFirstSpawn
 ├── html/
 │   ├── index.html        — UI de seleção de spawn e painel admin (build React)
-│   ├── assets/           — JS e CSS compilados
-│   └── marker/           — página HTML standalone usada como textura DUI dos markers 3D
+│   └── assets/           — JS e CSS compilados
 ├── data/
-│   ├── spawns.json       — lista de spawns (fonte da verdade, editável pelo painel admin)
-│   └── config.json       — configurações de comportamento (editável pelo painel admin)
+│   ├── spawns.default.json : locais da primeira instalação
+│   └── config.default.json : valores padrão das configurações
 ├── locales/
 │   ├── en.json
 │   └── pt-br.json
