@@ -90,16 +90,13 @@ lib.callback.register('qbx_spawn:server:getLastLocation', function(source)
         return nil, nil
     end
 
-    local result = MySQL.single.await(
-        'SELECT position FROM players WHERE citizenid = ?',
-        {player.PlayerData.citizenid}
-    )
-
-    if not result or not result.position then
+    -- the position loaded at login: the database may already hold the selection spot from a save made before the spawn
+    local loaded = player.PlayerData.position
+    if not loaded then
         return nil, nil
     end
 
-    local position = json.decode(result.position)
+    local position = { x = loaded.x, y = loaded.y, z = loaded.z, w = loaded.w }
     local propertyId = player.PlayerData.metadata.inside and
         player.PlayerData.metadata.inside.property_id or nil
 
