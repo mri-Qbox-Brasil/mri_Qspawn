@@ -1,10 +1,6 @@
--- config persistido em data/config.json (gerenciado por server/config.lua).
--- Le sempre via GetSpawnConfig() pra pegar mutacoes em runtime (admin salvou
--- na UI). Cache local seria stale.
+-- Settings come from GetSpawnConfig() on every read: the admin may change them at runtime.
 
--- #RRGGBB ou #RRGGBBAA. O alpha e aceito e repassado; quem ignora e o
--- hexToHslVar da NUI (theming HSL), nao a validacao. Lua nao tem alternancia
--- em pattern, entao sao dois matches — %x?%x? aceitaria 7 digitos.
+-- #RRGGBB or #RRGGBBAA (the NUI theme drops alpha); two patterns because %x?%x? would take 7 digits.
 local HEX_RGB = '^#%x%x%x%x%x%x$'
 local HEX_RGBA = '^#%x%x%x%x%x%x%x%x$'
 
@@ -33,10 +29,7 @@ AddConvarChangeListener('mri:backgroundColor', function(name)
     TriggerClientEvent('mri_Qspawn:client:backgroundColorChanged', -1, newColor)
 end)
 
--- Registra o painel admin do mri_Qspawn como plugin do mri_Qadmin via export.
--- Se Qadmin nao tiver rodando no server, o pcall protege e o painel continua
--- acessivel via /adminspawn standalone normalmente. Manifest shape espelha
--- web/src/plugin/types.ts (drift control manual).
+-- mri_Qadmin plugin; without Qadmin the panel still opens with /adminspawn.
 local function doRegister()
     if GetResourceState('mri_Qadmin') ~= 'started' then return end
     exports['mri_Qadmin']:RegisterPlugin({
@@ -50,27 +43,19 @@ local function doRegister()
     })
 end
 
--- Sinal oficial do Qadmin: emitido sempre que o registry dele fica pronto.
--- Complementa o onServerResourceStart abaixo, que depende do timing do start; este
--- dispara quando o registry esta de fato aceitando plugins. RegisterPlugin e
--- idempotente por `id`, entao os dois caminhos juntos sao seguros.
+-- Qadmin fires this when its registry accepts plugins; RegisterPlugin is idempotent by id.
 AddEventHandler('mri_Qadmin:server:pluginsReady', doRegister)
 
--- Qadmin inicia/reinicia → re-registra automaticamente
 AddEventHandler('onServerResourceStart', function(resourceName)
     if resourceName == 'mri_Qadmin' then doRegister() end
 end)
 
--- Plugin inicia com Qadmin já rodando → registra imediatamente
 CreateThread(function()
     Wait(0)
     doRegister()
 end)
 
--- Tabela local de controle de primeiro-spawn (selectOnFirstSpawn). Substitui
--- GlobalState para evitar race read-modify-write quando dois jogadores spawnam
--- simultaneamente. Persiste apenas em memória: intencional, reiniciar o recurso
--- reseta o controle (comportamento equivalente ao anterior com GlobalState).
+-- First-spawn control per citizenid (selectOnFirstSpawn), in memory on purpose: a restart resets it.
 local spawnedPlayers = {}
 
 local function waitForPlayer(source, timeoutMs)
@@ -83,7 +68,7 @@ local function waitForPlayer(source, timeoutMs)
     return player
 end
 
--- Usar exatamente as mesmas funções do qbx_spawn
+-- Same callbacks as qbx_spawn.
 lib.callback.register('qbx_spawn:server:getLastLocation', function(source)
     local player = exports.qbx_core:GetPlayer(source)
     if not player then
@@ -104,8 +89,7 @@ lib.callback.register('qbx_spawn:server:getLastLocation', function(source)
 end)
 
 lib.callback.register('qbx_spawn:server:getHouses', function(source)
-    -- ps-housing é opcional: sem ele não há casas — sai cedo pra não chamar
-    -- export inexistente nem consultar a tabela `properties` ausente.
+    -- ps-housing is optional: without it there are no houses nor a properties table.
     if GetResourceState('ps-housing') ~= 'started' then return {} end
 
     local player = exports.qbx_core:GetPlayer(source)
@@ -122,8 +106,7 @@ lib.callback.register('qbx_spawn:server:getHouses', function(source)
     for i = 1, #houses do
         local house = houses[i]
         if not house.apartment then
-            -- getMainDoor pode retornar nil e door.doors pode ser nil: protege a
-            -- cadeia de coords com parênteses e só adiciona se resolveu coords.
+            -- getMainDoor and door.doors may be nil; only houses with resolved coords go in.
             local door = exports['ps-housing']:getMainDoor(house.property_id, 1, true)
             local coords = door and (door.objCoords or door.coords
                 or (door.doors and door.doors[1] and (door.doors[1].coords or door.doors[1].objCoords)))
@@ -150,18 +133,12 @@ RegisterNetEvent('qbx_spawn:server:spawn', function()
     spawnedPlayers[player.PlayerData.citizenid] = true
 end)
 
--- Aviso de conflito: mri_Qspawn SUBSTITUI o qbx_spawn (mesmos callbacks/evento).
--- Se os dois rodarem juntos, o ox_lib registra handlers duplicados e as respostas
--- colidem (query dupla, alreadySpawned/spawn ambíguos).
---
--- GetResourceState('qbx_spawn') NAO serve aqui: o nosso `provide 'qbx_spawn'`
--- responde 'started' e o aviso dispararia contra nos mesmos. So o nome REAL
--- aparece no GetResourceByFindIndex.
+-- Running qbx_spawn too makes the callbacks collide; GetResourceState says 'started' through our provide, so look for the real name.
 CreateThread(function()
     for i = 0, GetNumResources() - 1 do
         local name = GetResourceByFindIndex(i)
         if name == 'qbx_spawn' and GetResourceState(name) == 'started' then
-            print('[mri_Qspawn] ERRO: qbx_spawn está ATIVO — remova-o; os callbacks vão colidir com mri_Qspawn.')
+            print('[mri_Qspawn] ERRO: qbx_spawn está ATIVO, remova-o: os callbacks vão colidir com mri_Qspawn.')
             return
         end
     end

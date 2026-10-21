@@ -9,13 +9,13 @@
         "label": "MRPD",
         "coords": { "x": 411.63, "y": -966.19, "z": 28.47, "w": 226.55 },
         "icon": "shield",
-        "description": "Estação de polícia central — prédio moderno de três andares em Mission Row."
+        "description": "Estação de polícia central, prédio moderno de três andares em Mission Row."
     },
     {
         "label": "Bennys Garage",
         "coords": { "x": -184.34, "y": -1295.03, "z": 30.3, "w": 127.36 },
         "icon": "building",
-        "description": "Bennys Original Motor Works — oficina especializada em modificação de veículos."
+        "description": "Bennys Original Motor Works, oficina especializada em modificação de veículos."
     },
     {
         "label": "Legion Square",

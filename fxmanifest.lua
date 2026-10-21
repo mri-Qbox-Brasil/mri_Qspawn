@@ -4,15 +4,14 @@ game 'gta5'
 name 'mri_Qspawn'
 description 'Sistema de spawn com NUI moderna baseada em shadcn/ui'
 author 'MRI'
-version '2.7.1'
+version '2.8.0'
 
 ox_lib 'locale'
 
--- Substitui o qbx_spawn (registra os mesmos callbacks). NÃO rodar os dois juntos.
+-- Replaces qbx_spawn (same callbacks); never run both.
 provide 'qbx_spawn'
 
--- Dependência dura: usa exports.qbx_core e o entrypoint chooseSpawn é chamado
--- pelo multichar do qbx_core. Declara pra falhar cedo e fixar ordem de carga.
+-- The qbx_core multichar calls chooseSpawn; declared to fail early and fix the load order.
 dependency 'qbx_core'
 
 shared_scripts {
@@ -20,13 +19,14 @@ shared_scripts {
 }
 
 client_scripts {
+	'client/placement.lua',
 	'client/main.lua',
 }
 
 server_scripts {
 	'@oxmysql/lib/MySQL.lua',
-	'server/storage.lua', -- tabelas, importacao unica e helpers de config
-	'server/config.lua', -- expoe GetSpawnConfig() global, usado por main.lua
+	'server/storage.lua', -- tables, one-time import and config helpers
+	'server/config.lua', -- global GetSpawnConfig(), used by main.lua
 	'server/spawns.lua',
 	'server/main.lua',
 }

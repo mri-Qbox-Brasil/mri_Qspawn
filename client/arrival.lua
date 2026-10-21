@@ -68,11 +68,18 @@ local function setOutline(ent, on)
     lit[ent] = on or nil
 end
 
+-- Color and shader are global to the game: hand them back as found, or every outline of other scripts stays invisible.
+local function restoreOutlineStyle()
+    SetEntityDrawOutlineShader(0)
+    SetEntityDrawOutlineColor(255, 255, 255, 255)
+end
+
 local function clearOutlines()
     for ent in pairs(lit) do
         if DoesEntityExist(ent) then SetEntityDrawOutline(ent, false) end
     end
     lit = {}
+    restoreOutlineStyle()
 end
 
 -- FocusIn stays on until stopped; FocusOut fades the screen back.
@@ -236,7 +243,10 @@ end
 -- Outline color is global, so the brightness envelope is shared by every object.
 local function outlineSweep(origin, r, g, b, gen)
     local objs = collect(OUTLINE_POOLS, origin, MAX_OUTLINED)
-    if #objs == 0 then return end
+    if #objs == 0 then
+        if generation == gen then restoreOutlineStyle() end
+        return
+    end
     local start = GetGameTimer()
     local lastWave = (PINGS - 1) * PING_INTERVAL
     local nextObj = 1

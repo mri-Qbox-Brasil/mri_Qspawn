@@ -43,8 +43,8 @@ lib.callback.register('mri_Qspawn:server:getConfig', function()
 end)
 
 lib.callback.register('mri_Qspawn:server:saveConfig', function(source, payload)
-    if not isAdmin(source) then return false, 'sem permissão' end
-    if type(payload) ~= 'table' then return false, 'payload inválido' end
+    if not isAdmin(source) then return false, 'not allowed' end
+    if type(payload) ~= 'table' then return false, 'invalid payload' end
     Citizen.Await(loaded)
 
     -- A block equal to the default deletes its row.

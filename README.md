@@ -1,4 +1,4 @@
-# mri_Qspawn — Manual
+# Manual do mri_Qspawn
 
 Sistema de spawn com NUI cinemática em 1ª pessoa. Plug-and-play em servidores QBox/QBCore.
 
@@ -9,7 +9,7 @@ Sistema de spawn com NUI cinemática em 1ª pessoa. Plug-and-play em servidores 
 1. [Dependências](#dependências)
 2. [Instalação](#instalação)
 3. [Permissões (ACE)](#permissões-ace)
-4. [Spawns — gerenciamento](#spawns--gerenciamento)
+4. [Gerenciar spawns](#gerenciar-spawns)
 5. [Painel admin (`/adminspawn`)](#painel-admin-adminspawn)
 6. [Configurações de comportamento](#configurações-de-comportamento)
 7. [Cor de destaque](#cor-de-destaque)
@@ -41,7 +41,7 @@ Sistema de spawn com NUI cinemática em 1ª pessoa. Plug-and-play em servidores 
    ```
    ensure mri_Qspawn
    ```
-3. **Remova ou desabilite o `qbx_spawn`** — os dois recursos registram os mesmos callbacks (`qbx_spawn:server:getLastLocation`, `qbx_spawn:server:getHouses`, `qbx_spawn:server:alreadySpawned`) e o mesmo evento `qbx_spawn:server:spawn`, então não podem rodar juntos. O `fxmanifest.lua` declara `provide 'qbx_spawn'` para assumir essa identidade.
+3. **Remova ou desabilite o `qbx_spawn`**: os dois recursos registram os mesmos callbacks (`qbx_spawn:server:getLastLocation`, `qbx_spawn:server:getHouses`, `qbx_spawn:server:alreadySpawned`) e o mesmo evento `qbx_spawn:server:spawn`, então não podem rodar juntos. O `fxmanifest.lua` declara `provide 'qbx_spawn'` para assumir essa identidade.
 
 ---
 
@@ -57,7 +57,7 @@ Qualquer grupo ou identifier pode ser usado no lugar de `group.admin`. O gate in
 
 ---
 
-## Spawns — gerenciamento
+## Gerenciar spawns
 
 Os locais de spawn ficam no banco, na tabela `mri_qspawn_locations`, que o resource cria sozinho na primeira subida. O painel admin grava direto nela, sem restart, e atualizar o resource não mexe nos locais cadastrados.
 
@@ -102,18 +102,22 @@ Execute o comando no chat:
 /adminspawn
 ```
 
-### Aba "Spawns"
+### Aba "Locais"
 
-- **Novo spawn** — abre o formulário em branco.
-- **Editar** — preenche o formulário com os dados do spawn existente.
-- **Usar minha posição** — preenche as coordenadas e o heading com a posição atual do personagem no mundo.
-- **Apagar** — remove o spawn após confirmação. A operação é irreversível via UI.
+Três colunas: a lista com busca, o mapa do GTA com um pino por local e o editor do local escolhido. Clicar na lista ou no pino abre o local; o mapa voa até ele e mostra um cartão com **Ir até lá** e **Marcar de novo**.
 
-Todas as alterações são salvas imediatamente no banco e aplicadas na próxima abertura da tela de spawn, sem restart.
+- **+** cria um local novo. Ele só salva com nome e posição marcada.
+- **Marcar no mundo**: o painel some, uma cópia transparente do seu personagem segue a mira. Setas ou roda do mouse giram, **E** confirma, **Backspace** ou **Esc** cancela (sem abrir o pause). O editor mostra a área e para onde o personagem fica virado, nunca números.
+- **Ícone**: escolhido de uma lista pronta (Casa, Hospital, Polícia, Oficina...). Um ícone salvo antes que não está na lista continua aparecendo pelo nome.
+- **Cor**: da suíte (segue o `mri:color`) ou própria, num seletor de cor.
+- **Ir até lá** leva o admin para o ponto mais perto onde dá para ficar em pé.
+- **Apagar local** pede confirmação e não dá para desfazer.
 
-### Aba "Configurações"
+Tudo é salvo no banco e vale na próxima abertura da tela de spawn, sem restart.
 
-Permite editar os parâmetros de comportamento da UI e da câmera em runtime. As alterações são aplicadas instantaneamente para todos os clientes conectados via broadcast, sem restart.
+### Aba "Ajustes"
+
+Lista agrupada no estilo dos Ajustes do iPhone: interruptores, tempos como escolha pronta (`Na hora`, `0,15 s`...) e réguas com o valor ao lado. Um valor salvo fora da lista de tempos entra nela, não some. As alterações valem na hora para todos os clientes conectados, sem restart.
 
 > O painel também é acessível como plugin do `mri_Qadmin` (se instalado), aparecendo na aba "Spawns" do painel administrativo central.
 
@@ -219,7 +223,7 @@ setr mri:color "#00E699"
 
 - Se a convar estiver definida e for um hex válido (`#RRGGBB` ou `#RRGGBBAA`), ela é usada. O alpha é aceito mas ignorado no theming.
 - Caso contrário, o padrão é `#00E699` (tema mri-ui-kit).
-- A convar é compartilhada com outros recursos da suite MRI — definir uma vez aplica em todos.
+- A convar é compartilhada com outros recursos da suite MRI: definir uma vez aplica em todos.
 - Alterações em runtime (via `setr` ou outro recurso que chame `SetConvar`) são propagadas imediatamente para todos os clientes sem restart.
 
 Há também `mri:backgroundColor`, opcional, que tinge o fundo da UI. Segue as
@@ -229,15 +233,7 @@ mesmas regras; sem ela, o fundo fica no padrão do tema.
 
 ## Ícones
 
-Os ícones vêm da biblioteca [Lucide](https://lucide.dev/icons) e são especificados em kebab-case: `shield`, `map-pin`, `tree-pine`, `building`, `home`, `bed`, `leaf`, etc.
-
-Para usar um ícone em um spawn, defina o campo `icon` no formulário do painel admin:
-
-```json
-{ "label": "Floresta", "icon": "tree-pine", "color": "#4ADE80", ... }
-```
-
-A UI carrega o Lucide via UMD em runtime, então qualquer ícone do catálogo funciona sem necessidade de rebuild ou modificação de arquivos.
+Os ícones são do [Lucide](https://lucide.dev/icons), empacotados no build (a NUI não depende de CDN). A lista que o painel oferece fica em `web/src/lib/spawnIcons.tsx`, com o nome de cada um nos `locales/*.json` (`ui.icons`). Para somar um ícone: importar do `lucide-react`, pôr no `SPAWN_ICONS`, dar nome nos dois locales e rodar o build. Um nome salvo que não está na lista aparece como pino.
 
 ---
 
@@ -275,7 +271,7 @@ Mantém compatibilidade com o fluxo antigo do `qb-spawn`. Recebe `cData`, `new` 
 TriggerEvent('qb-spawn:client:setupSpawns', cData, new, apps)
 ```
 
-Quando `new = true`, apenas os apartamentos passados em `apps` são exibidos como opções de spawn.
+Quando `new = true`, apenas os apartamentos passados em `apps` são exibidos como opções de spawn. Ao confirmar, o `ps-housing:server:createNewApartment` cria o apartamento inicial e coloca o personagem dentro.
 
 ---
 
@@ -283,8 +279,8 @@ Quando `new = true`, apenas os apartamentos passados em `apps` são exibidos com
 
 As strings da UI são traduzidas via `ox_lib` locale. Os arquivos ficam em `locales/`:
 
-- `en.json` — inglês
-- `pt-br.json` — português do Brasil
+- `en.json`: inglês
+- `pt-br.json`: português do Brasil
 
 O locale ativo é definido pela convar `ox:locale` no `server.cfg`:
 
@@ -301,15 +297,15 @@ Para adicionar um novo idioma, crie `locales/<codigo>.json` seguindo a estrutura
 ```
 mri_Qspawn/
 ├── client/
-│   └── main.lua          — fluxo principal: NUI, câmera cinemática, fades, eventos de spawn
+│   └── main.lua         : fluxo principal: NUI, câmera cinemática, fades, eventos de spawn
 ├── server/
 │   ├── storage.lua       : tabelas no banco, importação única dos arquivos antigos
 │   ├── config.lua        : padrão + ajustes do banco, broadcast de mudanças
 │   ├── spawns.lua        : CRUD dos locais no banco, callbacks de admin
-│   └── main.lua          — last_location, casas, integração mri_Qadmin, selectOnFirstSpawn
+│   └── main.lua         : last_location, casas, integração mri_Qadmin, selectOnFirstSpawn
 ├── html/
-│   ├── index.html        — UI de seleção de spawn e painel admin (build React)
-│   └── assets/           — JS e CSS compilados
+│   ├── index.html       : UI de seleção de spawn e painel admin (build React)
+│   └── assets/          : JS e CSS compilados
 ├── data/
 │   ├── spawns.default.json : locais da primeira instalação
 │   └── config.default.json : valores padrão das configurações
